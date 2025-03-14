@@ -106,8 +106,12 @@ const Map: React.FC<MapProps> = ({
       const element = document.createElement('div');
       element.className = 'center-marker';
       element.innerHTML = `
-        <div class="center-marker-icon"></div>
-        <div class="center-marker-text">Move map to select a point</div>
+        <div class="center-marker-icon">
+          <div class="center-marker-pin"></div>
+          <div class="center-marker-point"></div>
+          <div class="center-marker-shadow"></div>
+        </div>
+        <div class="center-marker-text">Move map to place pin</div>
       `;
 
       const marker = new mapboxgl.Marker({
@@ -617,14 +621,36 @@ const Map: React.FC<MapProps> = ({
 
           // Update the marker if needed
           if (isInSunlight !== selectedPoint.isInSunlight) {
-            // Update marker color
+            // Update marker style
             if (selectedPoint.marker) {
+              // Remove old marker
               selectedPoint.marker.remove();
+              
+              // Create new marker element with updated style
+              const markerElement = document.createElement('div');
+              markerElement.className = isInSunlight ? 'placed-marker sunlight' : 'placed-marker shadow';
+              markerElement.innerHTML = `
+                <div class="placed-marker-icon">
+                  <div class="placed-marker-pin"></div>
+                  <div class="placed-marker-point"></div>
+                  <div class="placed-marker-pulse"></div>
+                </div>
+              `;
+              
+              // Create new marker
               const newMarker = new mapboxgl.Marker({
-                color: isInSunlight ? "#FFDD00" : "#3F51B5",
+                element: markerElement,
+                anchor: 'bottom',
               })
                 .setLngLat([selectedPoint.longitude, selectedPoint.latitude])
                 .addTo(map.current);
+              
+              // Update selected point with new marker and status
+              setSelectedPoint({
+                ...selectedPoint,
+                marker: newMarker,
+                isInSunlight,
+              });
             }
           }
         } else {
@@ -650,7 +676,22 @@ const Map: React.FC<MapProps> = ({
             // Update marker to shadow state
             if (selectedPoint.marker) {
               selectedPoint.marker.remove();
-              const newMarker = new mapboxgl.Marker({ color: "#3F51B5" })
+              
+              // Create new marker element with shadow style
+              const markerElement = document.createElement('div');
+              markerElement.className = 'placed-marker shadow';
+              markerElement.innerHTML = `
+                <div class="placed-marker-icon">
+                  <div class="placed-marker-pin"></div>
+                  <div class="placed-marker-point"></div>
+                  <div class="placed-marker-pulse"></div>
+                </div>
+              `;
+              
+              const newMarker = new mapboxgl.Marker({
+                element: markerElement,
+                anchor: 'bottom',
+              })
                 .setLngLat([selectedPoint.longitude, selectedPoint.latitude])
                 .addTo(map.current);
 
@@ -746,9 +787,22 @@ const Map: React.FC<MapProps> = ({
       setSelectedPointShadowStatus(true);
     }
     
-    // Create a marker at the clicked point
-    const markerColor = isInSunlight ? "#FFDD00" : "#3F51B5";
-    const marker = new mapboxgl.Marker({ color: markerColor })
+    // Create a custom marker element for better styling
+    const markerElement = document.createElement('div');
+    markerElement.className = isInSunlight ? 'placed-marker sunlight' : 'placed-marker shadow';
+    markerElement.innerHTML = `
+      <div class="placed-marker-icon">
+        <div class="placed-marker-pin"></div>
+        <div class="placed-marker-point"></div>
+        <div class="placed-marker-pulse"></div>
+      </div>
+    `;
+    
+    // Create a marker at the clicked point with the custom element
+    const marker = new mapboxgl.Marker({
+      element: markerElement,
+      anchor: 'bottom',
+    })
       .setLngLat(center)
       .addTo(map.current);
     
