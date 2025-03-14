@@ -1,0 +1,101 @@
+/* Center marker styling */
+.center-marker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+}
+
+.center-marker-icon {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background-color: rgba(0, 0, 0, 0.5);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.3);
+  position: relative;
+}
+
+.center-marker-icon::before,
+.center-marker-icon::after {
+  content: '';
+  position: absolute;
+  background-color: #fff;
+}
+
+.center-marker-icon::before {
+  width: 2px;
+  height: 10px;
+  top: 5px;
+  left: 9px;
+}
+
+.center-marker-icon::after {
+  width: 10px;
+  height: 2px;
+  top: 9px;
+  left: 5px;
+}
+
+.center-marker-text {
+  margin-top: 6px;
+  background-color: rgba(0, 0, 0, 0.7);
+  color: white;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  text-align: center;
+  max-width: 160px;
+}
+
+/* Map controls */
+.map-error {
+  position: absolute;
+  top: 60px;
+  left: 10px;
+  background-color: rgba(244, 67, 54, 0.9);
+  color: white;
+  padding: 10px;
+  border-radius: 4px;
+  max-width: 300px;
+  z-index: 10;
+}
+
+.map-error button {
+  background-color: white;
+  color: #f44336;
+  border: none;
+  padding: 4px 8px;
+  margin-top: 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* Sun beam visualization */
+.sun-marker {
+  pointer-events: none;
+}
+
+.sun-circle {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background-color: #FFFF00;
+}
+
+.sun-glow {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  box-shadow: 0 0 20px 10px rgba(255, 255, 0, 0.5);
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.sun-beam {
+  position: absolute;
+  background: linear-gradient(to right, rgba(255, 255, 0, 0.9), rgba(255, 255, 0, 0.3));
+  height: 2px;
+  pointer-events: none;
+} 

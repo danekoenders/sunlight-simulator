@@ -30,7 +30,11 @@ interface MapProps {
   lng?: number;
   zoom?: number;
   time?: Date;
+  onPlacementStateChange?: (isPlaced: boolean) => void;
 }
+
+// Define the placement states
+type PlacementState = 'idle' | 'placed';
 
 interface SelectedPoint {
   latitude: number;
@@ -286,6 +290,7 @@ const Map: React.FC<MapProps> = ({
   zoom: initialZoom = 16,
   time,
   currentTime,
+  onPlacementStateChange,
 }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -299,6 +304,10 @@ const Map: React.FC<MapProps> = ({
   const [bearing, setBearing] = useState(-17.6);
   const [sunPosition, setSunPosition] = useState<SunPosition | null>(null);
   const [selectedPoint, setSelectedPoint] = useState<SelectedPoint | null>(null);
+
+  // New state for placement mode
+  const [placementState, setPlacementState] = useState<PlacementState>('idle');
+  const [centerMarker, setCenterMarker] = useState<mapboxgl.Marker | null>(null);
 
   // Keep track of animation frame for cleanup
   const requestAnimationFrameId = useRef<number | null>(null);
@@ -348,6 +357,23 @@ const Map: React.FC<MapProps> = ({
     // Wait for map to be fully loaded
     initializedMap.on("load", () => {
       setIsMapLoaded(true);
+
+      // Create the center marker once the map is loaded
+      const element = document.createElement('div');
+      element.className = 'center-marker';
+      element.innerHTML = `
+        <div class="center-marker-icon"></div>
+        <div class="center-marker-text">Move map to select a point</div>
+      `;
+
+      const marker = new mapboxgl.Marker({
+        element,
+        anchor: 'bottom',
+      })
+        .setLngLat(initializedMap.getCenter())
+        .addTo(initializedMap);
+        
+      setCenterMarker(marker);
 
       // Notify parent if callback is provided
       if (onMapLoad) {
@@ -492,209 +518,172 @@ const Map: React.FC<MapProps> = ({
     showSunMarker,
   ]);
 
-  // Set up map click handler
+  // Handle placement state changes
+  useEffect(() => {
+    if (onPlacementStateChange) {
+      onPlacementStateChange(placementState === 'placed');
+    }
+    
+    // Update the center marker visibility based on placement state
+    if (centerMarker) {
+      const markerElement = centerMarker.getElement();
+      if (placementState === 'idle') {
+        markerElement.style.display = 'block';
+      } else {
+        markerElement.style.display = 'none';
+      }
+    }
+
+    // Set up camera behavior for placed state
+    if (map.current && isMapLoaded) {
+      if (placementState === 'placed' && selectedPoint) {
+        // Disable map panning but allow rotation and zoom
+        // Save the current center
+        const placedCenter = new mapboxgl.LngLat(
+          selectedPoint.longitude, 
+          selectedPoint.latitude
+        );
+        
+        // Add camera handler to keep the marker in center
+        const handleMoveEnd = () => {
+          if (map.current && placementState === 'placed' && selectedPoint) {
+            // After any camera movement, reset to the placed point
+            map.current.easeTo({
+              center: [selectedPoint.longitude, selectedPoint.latitude],
+              duration: 300,
+            });
+          }
+        };
+        
+        // Add event listener
+        map.current.on('moveend', handleMoveEnd);
+        
+        // Clean up
+        return () => {
+          map.current?.off('moveend', handleMoveEnd);
+        };
+      }
+    }
+  }, [placementState, centerMarker, onPlacementStateChange, isMapLoaded, selectedPoint]);
+
+  // Update center marker position when map moves (but only in idle state)
+  useEffect(() => {
+    if (!map.current || !centerMarker || !isMapLoaded) return;
+
+    const handleMapMove = () => {
+      if (!map.current || placementState !== 'idle') return;
+      centerMarker.setLngLat(map.current.getCenter());
+    };
+
+    map.current.on('move', handleMapMove);
+
+    return () => {
+      map.current?.off('move', handleMapMove);
+    };
+  }, [isMapLoaded, centerMarker, placementState]);
+
+  // Set up proper camera lock when in "placed" state
   useEffect(() => {
     if (!map.current || !isMapLoaded) return;
 
-    const handleMapClick = (e: mapboxgl.MapMouseEvent) => {
-      try {
-        // Remove previous marker if any
-        if (selectedPoint) {
-          if (selectedPoint.marker) selectedPoint.marker.remove();
-        }
+    // Handle camera lock in placed state
+    if (placementState === 'placed' && selectedPoint) {
+      // TypeScript needs a properly typed coordinate
+      const center: [number, number] = [selectedPoint.longitude, selectedPoint.latitude];
+      
+      // Initially set the center
+      map.current.setCenter(center);
+      
+      // We want to allow rotation, but not panning, so we'll:
+      // 1. Disable dragPan but keep other controls (rotation, zoom)
+      // 2. Detect when a user tries to change the center and reset it
 
-        // Clear any existing ray visualization
-        if (map.current!.getSource("ray-source")) {
-          (
-            map.current!.getSource("ray-source") as mapboxgl.GeoJSONSource
-          ).setData({
-            type: "FeatureCollection",
-            features: [],
+      // Save current state to restore later
+      const wasDragPanEnabled = map.current.dragPan.isEnabled();
+      
+      // Disable drag-panning (but keep rotate, zoom, etc)
+      if (wasDragPanEnabled) {
+        map.current.dragPan.disable();
+      }
+      
+      // Position will be fixed, but we'll check if user tries to change it
+      let isDragging = false;
+      
+      // Track if we're handling a move already to prevent recursive calls
+      let isHandlingMove = false;
+      
+      // Create a smart move handler that won't cause infinite recursion
+      const handleMove = () => {
+        if (!map.current || isHandlingMove) return;
+        
+        // Get current center
+        const currentCenter = map.current.getCenter();
+        
+        // Check if center has moved significantly
+        const hasMoved = 
+          Math.abs(currentCenter.lng - center[0]) > 0.0001 || 
+          Math.abs(currentCenter.lat - center[1]) > 0.0001;
+        
+        if (hasMoved) {
+          // Set flag to prevent recursion
+          isHandlingMove = true;
+          
+          // Reset center, but keep other camera properties
+          map.current.setCenter(center);
+          
+          // Reset flag after small delay
+          setTimeout(() => {
+            isHandlingMove = false;
+          }, 0);
+        }
+      };
+      
+      // This is triggered after rotation/zoom gestures end
+      const handleMoveEnd = () => {
+        if (!map.current) return;
+        
+        // Make sure we're at the correct center
+        // Get current center
+        const currentCenter = map.current.getCenter();
+        
+        // Check if center has moved
+        const hasMoved = 
+          Math.abs(currentCenter.lng - center[0]) > 0.0001 || 
+          Math.abs(currentCenter.lat - center[1]) > 0.0001;
+          
+        if (hasMoved) {
+          // Restore center with animation
+          map.current.easeTo({
+            center: center,
+            duration: 300
           });
         }
-
-        const clickedPoint: [number, number] = [e.lngLat.lng, e.lngLat.lat];
-
-        // Get sun position for the clicked location
-        const pointSunPosition = getSunPosition(
-          currentTime,
-          e.lngLat.lat,
-          e.lngLat.lng
-        );
-
-        // Determine if the point is in sunlight using ray tracing if sun is above horizon
-        let isInSunlight = false;
-        let rayTracingSuccess = false;
-        let rayTracingDetails = "";
-
-        if (pointSunPosition.altitude > 0) {
-          try {
-            // Use the enhanced function that returns metadata
-            const shadowResult = isPointInSunlightWithShadows(
-              map.current!,
-              clickedPoint,
-              pointSunPosition
-            );
-
-            isInSunlight = shadowResult.inSunlight;
-            rayTracingSuccess = shadowResult.method === "ray-tracing";
-            rayTracingDetails = shadowResult.details || "";
-
-            setSelectedPointShadowStatus(!isInSunlight);
-          } catch (error) {
-            console.error("Error in shadow calculation:", error);
-            setMapError(
-              "Shadow calculation failed. Using simplified method instead."
-            );
-            // Fallback to simple check if ray tracing fails
-            isInSunlight = isPointInSunlight(pointSunPosition);
-            rayTracingSuccess = false;
-            rayTracingDetails = "Error occurred during calculation";
-            setSelectedPointShadowStatus(!isInSunlight);
-          }
-        } else {
-          // If sun is below horizon, point is definitely in shadow
-          isInSunlight = false;
-          rayTracingSuccess = true;
-          rayTracingDetails = "Sun is below horizon";
-          setSelectedPointShadowStatus(true);
+      };
+      
+      // Add event listeners
+      map.current.on('move', handleMove);
+      map.current.on('moveend', handleMoveEnd);
+      
+      // Clean up
+      return () => {
+        if (!map.current) return;
+        
+        // Remove event listeners
+        map.current.off('move', handleMove);
+        map.current.off('moveend', handleMoveEnd);
+        
+        // Restore previous settings
+        if (wasDragPanEnabled && !map.current.dragPan.isEnabled()) {
+          map.current.dragPan.enable();
         }
-
-        // Create a marker at the clicked point
-        const markerColor = isInSunlight ? "#FFDD00" : "#3F51B5";
-        const marker = new mapboxgl.Marker({ color: markerColor })
-          .setLngLat(e.lngLat)
-          .addTo(map.current!);
-
-        // Update the selected point
-        setSelectedPoint({
-          latitude: e.lngLat.lat,
-          longitude: e.lngLat.lng,
-          isInSunlight,
-          marker,
-        });
-
-        // Visualize ray path from point to sun direction
-        if (
-          map.current!.getSource("ray-source") &&
-          map.current!.getSource("ray-segments-source")
-        ) {
-          if (pointSunPosition.altitude > 0) {
-            // Calculate a 3D endpoint with elevation
-            const rayEnd = calculate3DDestinationPoint(
-              [e.lngLat.lng, e.lngLat.lat],
-              1.0, // 1km distance
-              pointSunPosition.azimuthDegrees,
-              pointSunPosition.altitudeDegrees
-            );
-
-            // Create a GeoJSON feature for the 2D ray path (fallback)
-            const rayFeature: Feature<LineString, GeoJsonProperties> = {
-              type: "Feature",
-              properties: {
-                altitude: pointSunPosition.altitudeDegrees,
-                azimuth: pointSunPosition.azimuthDegrees,
-              },
-              geometry: {
-                type: "LineString",
-                coordinates: [
-                  [e.lngLat.lng, e.lngLat.lat],
-                  [rayEnd.position[0], rayEnd.position[1]],
-                ],
-              },
-            };
-
-            // Update the ray source for 2D fallback
-            (
-              map.current!.getSource("ray-source") as mapboxgl.GeoJSONSource
-            ).setData({
-              type: "FeatureCollection",
-              features: [rayFeature],
-            });
-
-            // Generate 3D segments for the ray with more segments for smoothness
-            const raySegments = createRay3DSegments(
-              map.current!,
-              [e.lngLat.lng, e.lngLat.lat],
-              rayEnd.position,
-              0, // Start at ground level
-              rayEnd.elevation, // End at calculated elevation
-              30 // Increased from 20 to 30 segments for smoother appearance
-            );
-
-            // Update the ray segments source
-            (
-              map.current!.getSource(
-                "ray-segments-source"
-              ) as mapboxgl.GeoJSONSource
-            ).setData({
-              type: "FeatureCollection",
-              features: raySegments,
-            });
-
-            // Update the ray color based on whether the point is in sunlight
-            const rayColor = isInSunlight ? "#FFDD00" : "#3F51B5";
-            map.current!.setPaintProperty(
-              "ray-layer",
-              "fill-extrusion-color",
-              rayColor
-            );
-            map.current!.setPaintProperty(
-              "ray-path-layer",
-              "line-color",
-              rayColor
-            );
-
-            // Also update the line dash pattern to indicate blockage
-            map.current!.setPaintProperty(
-              "ray-path-layer",
-              "line-dasharray",
-              isInSunlight ? [2, 2] : [1, 1]
-            );
-          } else {
-            // Clear ray if sun is below horizon
-            (
-              map.current!.getSource("ray-source") as mapboxgl.GeoJSONSource
-            ).setData({
-              type: "FeatureCollection",
-              features: [],
-            });
-            (
-              map.current!.getSource(
-                "ray-segments-source"
-              ) as mapboxgl.GeoJSONSource
-            ).setData({
-              type: "FeatureCollection",
-              features: [],
-            });
-          }
-        }
-
-        // If using sun marker (which we now don't recommend), update its beam
-        if (showSunMarker && sunMarker.current) {
-          sunMarker.current.setSelectedPoint(e.lngLat);
-        }
-
-        // Always notify parent with the clicked location
-        if (onLocationSelect) {
-          onLocationSelect(e.lngLat.lat, e.lngLat.lng);
-        }
-      } catch (error) {
-        console.error("Error handling map click:", error);
-        setMapError(
-          "Could not determine sunlight conditions at this location. Please try again."
-        );
+      };
+    } else {
+      // Make sure panning is enabled in idle state
+      if (map.current && !map.current.dragPan.isEnabled()) {
+        map.current.dragPan.enable();
       }
-    };
-
-    // Add click handler
-    map.current.on("click", handleMapClick);
-
-    // Remove click handler on cleanup
-    return () => {
-      map.current?.off("click", handleMapClick);
-    };
-  }, [isMapLoaded, selectedPoint, currentTime, showSunMarker]);
+    }
+  }, [isMapLoaded, placementState, selectedPoint]);
 
   // Update map state when camera changes
   useEffect(() => {
@@ -946,23 +935,191 @@ const Map: React.FC<MapProps> = ({
     selectedPoint,
   ]);
 
-  // Add handler for search results
+  // Modified handleSearchResult to not automatically place a marker
   const handleSearchResult = (result: SearchBoxRetrieveResponse) => {
     if (!map.current || !result || !result.features || result.features.length === 0) return;
     
     // Get the coordinates from the first feature
     const [lng, lat] = result.features[0].geometry.coordinates;
     
-    // Fly to the location
+    // Fly to the location (but don't place a marker yet)
     map.current.flyTo({
       center: [lng, lat],
       zoom: 16,
       duration: 2000
     });
 
-    // If we have a click handler, trigger it with the new coordinates
+    // Reset to idle state if we were in placed state
+    if (placementState === 'placed') {
+      setPlacementState('idle');
+    }
+
+    // Clear any previously selected point
+    if (selectedPoint && selectedPoint.marker) {
+      selectedPoint.marker.remove();
+      setSelectedPoint(null);
+    }
+
+    // If we have a location select handler, call it
     if (onLocationSelect) {
       onLocationSelect(lat, lng);
+    }
+  };
+  
+  // Function to handle "Check" button click
+  const handleCheckButtonClick = () => {
+    if (!map.current) return;
+    
+    // Get the current center of the map (where the center marker is)
+    const center = map.current.getCenter();
+    
+    // Remove previous marker if any
+    if (selectedPoint && selectedPoint.marker) {
+      selectedPoint.marker.remove();
+    }
+    
+    // Clear any existing ray visualization
+    if (map.current.getSource("ray-source")) {
+      (map.current.getSource("ray-source") as mapboxgl.GeoJSONSource).setData({
+        type: "FeatureCollection",
+        features: [],
+      });
+    }
+    
+    const clickedPoint: [number, number] = [center.lng, center.lat];
+    
+    // Get sun position for the clicked location
+    const pointSunPosition = getSunPosition(currentTime, center.lat, center.lng);
+    
+    // Determine if the point is in sunlight
+    let isInSunlight = false;
+    
+    if (pointSunPosition.altitude > 0) {
+      try {
+        const shadowResult = isPointInSunlightWithShadows(
+          map.current,
+          clickedPoint,
+          pointSunPosition
+        );
+        
+        isInSunlight = shadowResult.inSunlight;
+        setSelectedPointShadowStatus(!isInSunlight);
+      } catch (error) {
+        console.error("Error in shadow calculation:", error);
+        setMapError("Shadow calculation failed. Using simplified method instead.");
+        isInSunlight = isPointInSunlight(pointSunPosition);
+        setSelectedPointShadowStatus(!isInSunlight);
+      }
+    } else {
+      isInSunlight = false;
+      setSelectedPointShadowStatus(true);
+    }
+    
+    // Create a marker at the clicked point
+    const markerColor = isInSunlight ? "#FFDD00" : "#3F51B5";
+    const marker = new mapboxgl.Marker({ color: markerColor })
+      .setLngLat(center)
+      .addTo(map.current);
+    
+    // Update the selected point
+    setSelectedPoint({
+      latitude: center.lat,
+      longitude: center.lng,
+      isInSunlight,
+      marker,
+    });
+    
+    // Visualize ray path
+    if (map.current.getSource("ray-source") && map.current.getSource("ray-segments-source")) {
+      if (pointSunPosition.altitude > 0) {
+        const rayEnd = calculate3DDestinationPoint(
+          [center.lng, center.lat],
+          1.0,
+          pointSunPosition.azimuthDegrees,
+          pointSunPosition.altitudeDegrees
+        );
+        
+        // Create ray feature
+        const rayFeature: Feature<LineString, GeoJsonProperties> = {
+          type: "Feature",
+          properties: {
+            altitude: pointSunPosition.altitudeDegrees,
+            azimuth: pointSunPosition.azimuthDegrees,
+          },
+          geometry: {
+            type: "LineString",
+            coordinates: [
+              [center.lng, center.lat],
+              [rayEnd.position[0], rayEnd.position[1]],
+            ],
+          },
+        };
+        
+        // Update the ray source
+        (map.current.getSource("ray-source") as mapboxgl.GeoJSONSource).setData({
+          type: "FeatureCollection",
+          features: [rayFeature],
+        });
+        
+        // Generate 3D segments
+        const raySegments = createRay3DSegments(
+          map.current,
+          [center.lng, center.lat],
+          rayEnd.position,
+          0,
+          rayEnd.elevation,
+          30
+        );
+        
+        // Update segments source
+        (map.current.getSource("ray-segments-source") as mapboxgl.GeoJSONSource).setData({
+          type: "FeatureCollection",
+          features: raySegments,
+        });
+        
+        // Update colors
+        const rayColor = isInSunlight ? "#FFDD00" : "#3F51B5";
+        map.current.setPaintProperty("ray-layer", "fill-extrusion-color", rayColor);
+        map.current.setPaintProperty("ray-path-layer", "line-color", rayColor);
+        map.current.setPaintProperty(
+          "ray-path-layer",
+          "line-dasharray",
+          isInSunlight ? [2, 2] : [1, 1]
+        );
+      }
+    }
+    
+    // Change to placed state
+    setPlacementState('placed');
+    
+    // Notify parent with the selected location
+    if (onLocationSelect) {
+      onLocationSelect(center.lat, center.lng);
+    }
+  };
+  
+  // Function to handle "Reset" button click
+  const handleResetButtonClick = () => {
+    // Reset to idle state
+    setPlacementState('idle');
+    
+    // Clear the selected point and ray
+    if (selectedPoint && selectedPoint.marker) {
+      selectedPoint.marker.remove();
+      setSelectedPoint(null);
+    }
+    
+    // Clear ray visualizations
+    if (map.current && map.current.getSource("ray-source")) {
+      (map.current.getSource("ray-source") as mapboxgl.GeoJSONSource).setData({
+        type: "FeatureCollection",
+        features: [],
+      });
+      
+      (map.current.getSource("ray-segments-source") as mapboxgl.GeoJSONSource).setData({
+        type: "FeatureCollection",
+        features: [],
+      });
     }
   };
 
@@ -979,7 +1136,7 @@ const Map: React.FC<MapProps> = ({
           placeholder="Search for a location..."
           value=""
           map={map.current}
-          marker={true}
+          marker={false} // Don't show the search marker
           mapboxgl={mapboxgl}
         />
       </div>
@@ -1001,6 +1158,51 @@ const Map: React.FC<MapProps> = ({
           <p>{mapError}</p>
           <button onClick={() => setMapError(null)}>Dismiss</button>
         </div>
+      )}
+      
+      {/* Check button in idle state */}
+      {placementState === 'idle' && isMapLoaded && (
+        <button 
+          className="check-button"
+          onClick={handleCheckButtonClick}
+          style={{
+            position: 'absolute',
+            bottom: '20px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            padding: '10px 20px',
+            backgroundColor: '#4CAF50',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            zIndex: 2
+          }}
+        >
+          Check This Location
+        </button>
+      )}
+      
+      {/* Reset button in placed state */}
+      {placementState === 'placed' && (
+        <button 
+          className="reset-button"
+          onClick={handleResetButtonClick}
+          style={{
+            position: 'absolute',
+            top: '10px',
+            right: '60px',
+            padding: '8px 16px',
+            backgroundColor: '#f44336',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            zIndex: 2
+          }}
+        >
+          Reset
+        </button>
       )}
     </div>
   );

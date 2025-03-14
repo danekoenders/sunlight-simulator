@@ -20,6 +20,9 @@ export default function Home() {
     longitude: 4.4626
   });
   
+  // New state to track if a location has been placed/checked
+  const [isLocationPlaced, setIsLocationPlaced] = useState(false);
+  
   // Handler for time slider changes
   const handleTimeChange = (newTime: Date) => {
     setCurrentTime(newTime);
@@ -36,6 +39,11 @@ export default function Home() {
     console.log('Location selected:', lat, lng);
   };
 
+  // Handler for placement state changes
+  const handlePlacementStateChange = (isPlaced: boolean) => {
+    setIsLocationPlaced(isPlaced);
+  };
+
   return (
     <main className="app-container">
       <div className="app-content">
@@ -47,18 +55,22 @@ export default function Home() {
             lng={mapLocation.longitude}
             zoom={16}
             time={currentTime}
+            onPlacementStateChange={handlePlacementStateChange}
           />
         </div>
       </div>
       
-      <div className="footer">
-        <TimeSlider 
-          date={currentTime}
-          latitude={mapLocation.latitude}
-          longitude={mapLocation.longitude}
-          onTimeChange={handleTimeChange}
-        />
-      </div>
+      {/* Only show the time slider when a location is placed */}
+      {isLocationPlaced && (
+        <div className="footer">
+          <TimeSlider 
+            date={currentTime}
+            latitude={mapLocation.latitude}
+            longitude={mapLocation.longitude}
+            onTimeChange={handleTimeChange}
+          />
+        </div>
+      )}
     </main>
   );
 }
