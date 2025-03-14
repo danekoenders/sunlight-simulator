@@ -69,6 +69,7 @@ export class SunMarker {
 
     // Convert altitude to a normalized value (0-1) for position scaling
     // This ensures sun is still visible when low on horizon
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const altitudeFactor = Math.sin(sunPosition.altitude);
 
     // Calculate the direction vector toward the sun
@@ -84,7 +85,9 @@ export class SunMarker {
     const canvasHeight = mapCanvas.height;
 
     // Calculate the position vector magnitude needed to reach the edge of view
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const mapCenterViewport = this.map.project(mapCenter);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const edge = Math.min(canvasWidth, canvasHeight) * 0.45; // Use 45% of the smaller dimension
 
     // Calculate new LngLat based on the sun direction but constrained to the edge distance
@@ -161,7 +164,6 @@ export class SunMarker {
     }
 
     const sunPosition = this.marker.getLngLat();
-    const mapCanvas = this.map.getCanvas();
 
     // Convert geographical positions to pixel positions
     const sunPixel = this.map.project(sunPosition);

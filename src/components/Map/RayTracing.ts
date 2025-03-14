@@ -1,6 +1,6 @@
 import mapboxgl from "mapbox-gl";
 import * as turf from "@turf/turf";
-import { Feature, GeoJsonProperties } from "geojson";
+import { Feature } from "geojson";
 import { Ray3DPoint } from "./types";
 
 // Update the calculate3DDestinationPoint function to return elevation as well

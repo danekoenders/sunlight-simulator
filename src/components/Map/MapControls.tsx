@@ -13,8 +13,10 @@ interface MapControlsProps {
 }
 
 const MapControls: React.FC<MapControlsProps> = ({
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   map,
   placementState,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   selectedPoint,
   onCheckLocation,
   onResetLocation,

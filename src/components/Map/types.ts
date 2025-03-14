@@ -1,5 +1,4 @@
 import mapboxgl from "mapbox-gl";
-import { SunPosition } from "../../lib/sunUtils";
 
 // Define the map props
 export interface MapProps {

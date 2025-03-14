@@ -36,7 +36,7 @@ const SearchBoxWrapper: React.FC<SearchBoxWrapperProps> = ({
 
   return (
     <div className={className || 'search-box-wrapper'}>
-      {/* @ts-ignore */}
+      {/* @ts-expect-error - SearchBox component has incorrect type definitions for its props */}
       <SearchBox
         accessToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ""}
         onRetrieve={handleSearchResult}

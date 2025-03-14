@@ -350,9 +350,6 @@ const Map: React.FC<MapProps> = ({
         map.current.dragPan.disable();
       }
       
-      // Position will be fixed, but we'll check if user tries to change it
-      let isDragging = false;
-      
       // Track if we're handling a move already to prevent recursive calls
       let isHandlingMove = false;
       
