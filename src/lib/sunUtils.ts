@@ -1,6 +1,6 @@
 import * as SunCalc from 'suncalc';
 import * as turf from '@turf/turf';
-import { Feature, Point, Polygon } from 'geojson';
+import { Polygon } from 'geojson';
 import mapboxgl from 'mapbox-gl';
 
 export interface SunPosition {

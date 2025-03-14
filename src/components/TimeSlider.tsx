@@ -8,6 +8,23 @@ interface TimeSliderProps {
   onTimeChange: (newTime: Date) => void;
 }
 
+interface SunTimes {
+  sunrise: Date;
+  sunset: Date;
+  dawn: Date;
+  dusk: Date;
+  solarNoon: Date;
+  nadir: Date;
+  goldenHour: Date;
+  goldenHourEnd: Date;
+  sunriseEnd: Date;
+  sunsetStart: Date;
+  night: Date;
+  nightEnd: Date;
+  nauticalDawn: Date;
+  nauticalDusk: Date;
+}
+
 const TimeSlider: React.FC<TimeSliderProps> = ({ 
   date, 
   latitude, 
@@ -17,7 +34,7 @@ const TimeSlider: React.FC<TimeSliderProps> = ({
   // State for the slider value (0-1440 minutes in a day)
   const [sliderValue, setSliderValue] = useState<number>(0); // Will be initialized in useEffect
   const [displayTime, setDisplayTime] = useState<string>('');
-  const [sunTimes, setSunTimes] = useState<any>(null);
+  const [sunTimes, setSunTimes] = useState<SunTimes | null>(null);
   const [initialized, setInitialized] = useState<boolean>(false);
 
   // Format a Date object consistently for display
@@ -103,14 +120,6 @@ const TimeSlider: React.FC<TimeSliderProps> = ({
     <div className="time-slider-container">
       <div className="time-info">
         <span className="current-time">{displayTime}</span>
-        {sunTimes && (
-          <div className="sun-times">
-            <span title="Sunrise">Sunrise: {formatTimeForDisplay(sunTimes.sunrise)}</span>
-            <span title="Sunset">Sunset: {formatTimeForDisplay(sunTimes.sunset)}</span>
-            <span title="Dawn">Dawn: {formatTimeForDisplay(sunTimes.dawn)}</span>
-            <span title="Dusk">Dusk: {formatTimeForDisplay(sunTimes.dusk)}</span>
-          </div>
-        )}
       </div>
       
       <div className="slider-wrapper">
@@ -143,14 +152,6 @@ const TimeSlider: React.FC<TimeSliderProps> = ({
           onChange={handleSliderChange}
           className="time-slider"
         />
-        
-        <div className="time-labels">
-          <span>00:00</span>
-          <span>06:00</span>
-          <span>12:00</span>
-          <span>18:00</span>
-          <span>24:00</span>
-        </div>
       </div>
     </div>
   );
