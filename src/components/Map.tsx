@@ -694,7 +694,18 @@ const Map: React.FC<MapProps> = ({
   useEffect(() => {
     if (!map.current || !isMapLoaded) return;
 
+    // Handle map movement - only update sun marker position
     const handleMapMove = () => {
+      if (!map.current) return;
+
+      // Update sun marker position when map moves (if visible)
+      if (showSunMarker && sunMarker.current && sunPosition) {
+        sunMarker.current.updatePosition(sunPosition, map.current.getCenter());
+      }
+    };
+
+    // Handle map movement end - update map state
+    const handleMapMoveEnd = () => {
       if (!map.current) return;
 
       const center = map.current.getCenter();
@@ -703,17 +714,16 @@ const Map: React.FC<MapProps> = ({
       setZoom(parseFloat(map.current.getZoom().toFixed(2)));
       setPitch(parseFloat(map.current.getPitch().toFixed(2)));
       setBearing(parseFloat(map.current.getBearing().toFixed(2)));
-
-      // Update sun marker position when map moves (if visible)
-      if (showSunMarker && sunMarker.current && sunPosition) {
-        sunMarker.current.updatePosition(sunPosition, center);
-      }
     };
 
+    // Add both event listeners
     map.current.on("move", handleMapMove);
+    map.current.on("moveend", handleMapMoveEnd);
 
+    // Clean up both event listeners
     return () => {
       map.current?.off("move", handleMapMove);
+      map.current?.off("moveend", handleMapMoveEnd);
     };
   }, [isMapLoaded, showSunMarker, sunPosition]);
 
