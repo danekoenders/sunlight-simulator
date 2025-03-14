@@ -136,72 +136,48 @@ export function isPointInSunlight(sunPosition: SunPosition): boolean {
 }
 
 /**
- * Calculate the shadow length of a building based on sun position
+ * Gets nearby buildings from the map that could cast shadows
  */
-export function calculateShadowLength(buildingHeight: number, sunAltitude: number): number {
-  // If sun is directly overhead (90°), no shadow
-  if (sunAltitude >= Math.PI / 2) return 0;
-  
-  // If sun is at or below horizon, shadow is infinite
-  if (sunAltitude <= 0) return Infinity;
-  
-  // Shadow length = height / tan(sunAltitude)
-  return buildingHeight / Math.tan(sunAltitude);
-}
-
-/**
- * Create a shadow polygon for a building based on sun position
- */
-export function createBuildingShadow(
-  buildingFeature: any, 
-  sunPosition: SunPosition
-): Feature<Polygon> | null {
+export function getNearbyBuildings(
+  map: mapboxgl.Map,
+  center: [number, number],
+  radiusInMeters: number = 300
+): Array<GeoJSON.Feature> {
   try {
-    // Extract building height, default to 10m if not available
-    const height = buildingFeature.properties.height || 10;
+    // Get the current zoom level of the map
+    const zoom = map.getZoom();
+    console.log(`Getting buildings within ${radiusInMeters}m radius at zoom level ${zoom}`);
     
-    // If sun is below horizon, no specific shadow (entire map is in shadow)
-    if (sunPosition.altitude <= 0) return null;
+    // Convert center to pixel coordinates
+    const centerPixel = map.project(center);
     
-    // Calculate shadow length
-    const shadowLength = calculateShadowLength(height, sunPosition.altitude);
+    // Approximate pixels per meter at this location and zoom level
+    // This is a rough approximation that varies by latitude and zoom
+    const metersPerPixelApprox = 156543.03392 * Math.cos(center[1] * Math.PI / 180) / Math.pow(2, zoom);
+    const radiusInPixels = radiusInMeters / metersPerPixelApprox;
     
-    // If shadow is too long (>1km), it's practically infinite - limit for performance
-    if (shadowLength > 1000) return null;
+    console.log(`Meters per pixel: ~${metersPerPixelApprox.toFixed(2)}, radius in pixels: ~${radiusInPixels.toFixed(2)}`);
     
-    // Get building polygon
-    const buildingPolygon = buildingFeature.geometry;
+    // Define bounding box in pixel coordinates as [[x1, y1], [x2, y2]] format required by mapbox
+    const bbox: [[number, number], [number, number]] = [
+      [centerPixel.x - radiusInPixels, centerPixel.y - radiusInPixels],
+      [centerPixel.x + radiusInPixels, centerPixel.y + radiusInPixels]
+    ];
     
-    // Check if the polygon is valid
-    if (!buildingPolygon || buildingPolygon.type !== 'Polygon' || !buildingPolygon.coordinates) {
-      console.warn("Invalid building geometry for shadow calculation");
-      return null;
-    }
+    // Use the building-extrusion layer directly
+    const buildingLayerId = 'building-extrusion';
+    console.log(`Using building layer: ${buildingLayerId} for nearby buildings query`);
     
-    // Calculate shadow direction - opposite of sun azimuth
-    // Convert azimuth to bearing (clockwise from north)
-    const shadowBearing = (sunPosition.azimuthDegrees + 180) % 360;
+    // Query building features in pixel coordinates
+    const features = map.queryRenderedFeatures(bbox, {
+      layers: [buildingLayerId]
+    });
     
-    // Create shadow by projecting the building polygon
-    // We use turf.transformTranslate to move the polygon in the shadow direction
-    const shadowPolygon = turf.transformTranslate(
-      buildingPolygon, 
-      shadowLength / 1000, // Convert to km for turf
-      shadowBearing
-    );
-    
-    // Add properties to the shadow for debugging
-    return {
-      ...shadowPolygon,
-      properties: {
-        originalHeight: height,
-        shadowLength: shadowLength,
-        buildingId: buildingFeature.id || 'unknown'
-      }
-    };
+    console.log(`Found ${features.length} building features in pixel bounding box`);
+    return features;
   } catch (error) {
-    console.error("Error creating building shadow:", error);
-    return null;
+    console.error("Error getting nearby buildings:", error);
+    return [];
   }
 }
 
@@ -303,52 +279,6 @@ export function isPointInBuildingShadow(
     console.error("Error in shadow calculation:", error);
     // If there's an error, assume the point is in sunlight (fail open)
     return false;
-  }
-}
-
-/**
- * Gets nearby buildings from the map that could cast shadows
- */
-export function getNearbyBuildings(
-  map: mapboxgl.Map,
-  center: [number, number],
-  radiusInMeters: number = 300
-): Array<GeoJSON.Feature> {
-  try {
-    // Get the current zoom level of the map
-    const zoom = map.getZoom();
-    console.log(`Getting buildings within ${radiusInMeters}m radius at zoom level ${zoom}`);
-    
-    // Convert center to pixel coordinates
-    const centerPixel = map.project(center);
-    
-    // Approximate pixels per meter at this location and zoom level
-    // This is a rough approximation that varies by latitude and zoom
-    const metersPerPixelApprox = 156543.03392 * Math.cos(center[1] * Math.PI / 180) / Math.pow(2, zoom);
-    const radiusInPixels = radiusInMeters / metersPerPixelApprox;
-    
-    console.log(`Meters per pixel: ~${metersPerPixelApprox.toFixed(2)}, radius in pixels: ~${radiusInPixels.toFixed(2)}`);
-    
-    // Define bounding box in pixel coordinates as [[x1, y1], [x2, y2]] format required by mapbox
-    const bbox: [[number, number], [number, number]] = [
-      [centerPixel.x - radiusInPixels, centerPixel.y - radiusInPixels],
-      [centerPixel.x + radiusInPixels, centerPixel.y + radiusInPixels]
-    ];
-    
-    // Use the building-extrusion layer directly
-    const buildingLayerId = 'building-extrusion';
-    console.log(`Using building layer: ${buildingLayerId} for nearby buildings query`);
-    
-    // Query building features in pixel coordinates
-    const features = map.queryRenderedFeatures(bbox, {
-      layers: [buildingLayerId]
-    });
-    
-    console.log(`Found ${features.length} building features in pixel bounding box`);
-    return features;
-  } catch (error) {
-    console.error("Error getting nearby buildings:", error);
-    return [];
   }
 }
 

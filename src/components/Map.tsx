@@ -11,7 +11,6 @@ import {
   sunPositionToMapboxLight,
   isPointInSunlight,
   isPointInSunlightWithShadows,
-  createBuildingShadow,
   SunPosition,
 } from "../lib/sunUtils";
 import * as turf from "@turf/turf";
@@ -285,7 +284,6 @@ const Map: React.FC<MapProps> = ({
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const sunMarker = useRef<SunMarker | null>(null);
-  const shadowUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Map state
   const [lng, setLng] = useState(initialLng);
@@ -294,9 +292,7 @@ const Map: React.FC<MapProps> = ({
   const [pitch, setPitch] = useState(45);
   const [bearing, setBearing] = useState(-17.6);
   const [sunPosition, setSunPosition] = useState<SunPosition | null>(null);
-  const [selectedPoint, setSelectedPoint] = useState<SelectedPoint | null>(
-    null
-  );
+  const [selectedPoint, setSelectedPoint] = useState<SelectedPoint | null>(null);
 
   // Keep track of animation frame for cleanup
   const requestAnimationFrameId = useRef<number | null>(null);
@@ -305,17 +301,11 @@ const Map: React.FC<MapProps> = ({
   const [isMapLoaded, setIsMapLoaded] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
 
-  // Show building shadow calculations
-  const [showShadows, setShowShadows] = useState(true);
-  const shadowPolygons = useRef<mapboxgl.MapboxGeoJSONFeature[]>([]);
-
   // Don't show the sun - it's misleading in the view
   const [showSunMarker, setShowSunMarker] = useState(false);
 
   // Inside the Map component, add a new state for tracking shadow status
-  const [selectedPointShadowStatus, setSelectedPointShadowStatus] = useState<
-    boolean | null
-  >(null);
+  const [selectedPointShadowStatus, setSelectedPointShadowStatus] = useState<boolean | null>(null);
 
   // Clear any error message after 5 seconds
   useEffect(() => {
@@ -327,178 +317,6 @@ const Map: React.FC<MapProps> = ({
       return () => clearTimeout(timer);
     }
   }, [mapError]);
-
-  // Function to update shadow visualization - memoized to prevent recreations
-  const updateShadowVisualization = useCallback(
-    (mapInstance: mapboxgl.Map, sunPos: SunPosition) => {
-      try {
-        // Don't visualize shadows if the sun is below the horizon
-        if (sunPos.altitude <= 0) {
-          // Clear shadows
-          const shadowSource = mapInstance.getSource(
-            "shadow-source"
-          ) as mapboxgl.GeoJSONSource;
-          if (shadowSource) {
-            shadowSource.setData({
-              type: "FeatureCollection",
-              features: [],
-            });
-          }
-          return;
-        }
-
-        // Make sure the map has fully loaded
-        if (!mapInstance.loaded()) {
-          console.log("Map not fully loaded, skipping shadow visualization");
-          return;
-        }
-
-        // Get the visible map bounds with some padding
-        const bounds = mapInstance.getBounds();
-        if (!bounds) {
-          console.log(
-            "Could not get map bounds, skipping shadow visualization"
-          );
-          return;
-        }
-
-        // Create a padding to expand the bounds and get more buildings
-        const sw = bounds.getSouthWest();
-        const ne = bounds.getNorthEast();
-
-        if (!sw || !ne) {
-          console.log(
-            "Invalid bounds coordinates, skipping shadow visualization"
-          );
-          return;
-        }
-
-        // Convert to pixel coordinates with padding
-        const padding = 100; // pixels of padding
-        const swPixel = mapInstance.project(sw);
-        const nePixel = mapInstance.project(ne);
-
-        if (!swPixel || !nePixel) {
-          console.log(
-            "Could not project bounds to pixels, skipping shadow visualization"
-          );
-          return;
-        }
-
-        // Add padding to the bbox
-        const bboxWithPadding: [[number, number], [number, number]] = [
-          [swPixel.x - padding, swPixel.y + padding],
-          [nePixel.x + padding, nePixel.y - padding],
-        ];
-
-        // Use the building-extrusion layer directly
-        const buildingLayerId = "building-extrusion";
-        console.log(
-          `Using building layer: ${buildingLayerId} for shadow calculations`
-        );
-
-        // Get buildings in the current view with safety check
-        let visibleBuildings = [];
-        try {
-          visibleBuildings = mapInstance.queryRenderedFeatures(
-            bboxWithPadding,
-            { layers: [buildingLayerId] }
-          );
-          console.log(
-            `Found ${visibleBuildings.length} buildings for shadow calculation`
-          );
-        } catch (err) {
-          console.error("Error querying rendered features:", err);
-          return;
-        }
-
-        // Generate shadow polygons for each building
-        const shadowFeatures: any[] = [];
-        let successCount = 0;
-
-        visibleBuildings.forEach((building) => {
-          try {
-            const shadow = createBuildingShadow(building, sunPos);
-            if (shadow) {
-              shadowFeatures.push(shadow);
-              successCount++;
-            }
-          } catch (err) {
-            console.error("Error creating building shadow:", err);
-            // Continue with next building
-          }
-        });
-
-        console.log(
-          `Created ${successCount} shadow polygons out of ${visibleBuildings.length} buildings`
-        );
-
-        // Update shadow layer
-        try {
-          const shadowSource = mapInstance.getSource(
-            "shadow-source"
-          ) as mapboxgl.GeoJSONSource;
-          if (shadowSource) {
-            shadowSource.setData({
-              type: "FeatureCollection",
-              features: shadowFeatures,
-            });
-          }
-        } catch (err) {
-          console.error("Error updating shadow source:", err);
-        }
-      } catch (err) {
-        console.error("Error in shadow visualization:", err);
-        // Just fail silently to avoid breaking the app
-      }
-    },
-    []
-  );
-
-  // Handle shadow toggle with memoization to prevent recreation
-  const handleToggleShadows = useCallback(
-    (show: boolean) => {
-      if (!map.current || !map.current.loaded()) {
-        setMapError(
-          "Map is not fully loaded yet. Please try again in a moment."
-        );
-        return;
-      }
-
-      setShowShadows(show);
-
-      // Update shadow layer visibility
-      if (map.current) {
-        if (map.current.getLayer("shadow-layer")) {
-          map.current.setLayoutProperty(
-            "shadow-layer",
-            "visibility",
-            show ? "visible" : "none"
-          );
-        }
-      }
-
-      // If turning on shadows, update them
-      if (show && map.current && sunPosition) {
-        try {
-          // Clear any existing timeout
-          if (shadowUpdateTimeoutRef.current) {
-            clearTimeout(shadowUpdateTimeoutRef.current);
-          }
-
-          // Use a timeout to debounce shadow calculations
-          shadowUpdateTimeoutRef.current = setTimeout(() => {
-            updateShadowVisualization(map.current!, sunPosition);
-          }, 100);
-        } catch (error) {
-          console.error("Error updating shadows:", error);
-          setMapError("Failed to calculate shadows. Please try again.");
-          setShowShadows(false);
-        }
-      }
-    },
-    [sunPosition, updateShadowVisualization]
-  );
 
   // Initialize map on component mount
   useEffect(() => {
@@ -534,33 +352,10 @@ const Map: React.FC<MapProps> = ({
     // Add 3D buildings once the map style is loaded
     initializedMap.on("style.load", () => {
       // We know the building layer is always called "building-extrusion" in the custom style
-      console.log("Using building-extrusion layer for shadow calculations");
+      console.log("Using building-extrusion layer for ray tracing");
 
-      // Store the building layer ID for shadow calculations
+      // Store the building layer ID for ray tracing
       (initializedMap as any).buildingLayerId = "building-extrusion";
-
-      // Add a source for shadow polygons
-      initializedMap.addSource("shadow-source", {
-        type: "geojson",
-        data: {
-          type: "FeatureCollection",
-          features: [],
-        },
-      });
-
-      // Add a layer to visualize shadows
-      initializedMap.addLayer({
-        id: "shadow-layer",
-        type: "fill",
-        source: "shadow-source",
-        paint: {
-          "fill-color": "#000000",
-          "fill-opacity": 0.3,
-        },
-        layout: {
-          visibility: "visible", // Always visible by default
-        },
-      });
 
       // Add ray-source back into the initialization
       initializedMap.addSource("ray-source", {
@@ -621,9 +416,6 @@ const Map: React.FC<MapProps> = ({
       }
       if (sunMarker.current) {
         sunMarker.current.remove();
-      }
-      if (shadowUpdateTimeoutRef.current) {
-        clearTimeout(shadowUpdateTimeoutRef.current);
       }
       initializedMap.remove();
     };
@@ -686,16 +478,12 @@ const Map: React.FC<MapProps> = ({
         map.current.getCenter()
       );
     }
-
-    // Always render shadows initially
-    updateShadowVisualization(map.current, initialSunPosition);
   }, [
     isMapLoaded,
     currentTime,
     lat,
     lng,
     showSunMarker,
-    updateShadowVisualization,
   ]);
 
   // Set up map click handler
@@ -984,19 +772,6 @@ const Map: React.FC<MapProps> = ({
       sunMarker.current.updatePosition(newSunPosition, map.current.getCenter());
     }
 
-    // Update shadow visualization if enabled (with debouncing)
-    if (showShadows) {
-      // Clear any existing timeout
-      if (shadowUpdateTimeoutRef.current) {
-        clearTimeout(shadowUpdateTimeoutRef.current);
-      }
-
-      // Use a timeout to debounce shadow calculations
-      shadowUpdateTimeoutRef.current = setTimeout(() => {
-        updateShadowVisualization(map.current!, newSunPosition);
-      }, 100);
-    }
-
     // Update ray tracing for the selected point when time changes
     if (
       selectedPoint &&
@@ -1151,9 +926,7 @@ const Map: React.FC<MapProps> = ({
     isMapLoaded,
     lat,
     lng,
-    showShadows,
     showSunMarker,
-    updateShadowVisualization,
     selectedPoint,
   ]);
 
