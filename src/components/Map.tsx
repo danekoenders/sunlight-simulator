@@ -9,6 +9,9 @@ import React, {
   useMemo,
 } from "react";
 import mapboxgl from "mapbox-gl";
+import { SearchBox } from '@mapbox/search-js-react';
+import { SearchBoxRetrieveResponse } from '@mapbox/search-js-core';
+import '@mapbox/search-js-web';
 import {
   getSunPosition,
   sunPositionToMapboxLight,
@@ -943,12 +946,55 @@ const Map: React.FC<MapProps> = ({
     selectedPoint,
   ]);
 
+  // Add handler for search results
+  const handleSearchResult = (result: SearchBoxRetrieveResponse) => {
+    if (!map.current || !result || !result.features || result.features.length === 0) return;
+    
+    // Get the coordinates from the first feature
+    const [lng, lat] = result.features[0].geometry.coordinates;
+    
+    // Fly to the location
+    map.current.flyTo({
+      center: [lng, lat],
+      zoom: 16,
+      duration: 2000
+    });
+
+    // If we have a click handler, trigger it with the new coordinates
+    if (onLocationSelect) {
+      onLocationSelect(lat, lng);
+    }
+  };
+
+  // Only render SearchBox when map is loaded
+  const renderSearchBox = () => {
+    if (!map.current) return null;
+
+    return (
+      <div style={{ position: 'absolute', top: '10px', left: '10px', zIndex: 1 }}>
+        {/* @ts-ignore */}
+        <SearchBox
+          accessToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ""}
+          onRetrieve={handleSearchResult}
+          placeholder="Search for a location..."
+          value=""
+          map={map.current}
+          marker={true}
+          mapboxgl={mapboxgl}
+        />
+      </div>
+    );
+  };
+
   return (
     <div
       className="map-container"
       ref={mapContainer}
       style={{ width: "100%", height: "100%" }}
     >
+      {/* Add SearchBox component only when map is loaded */}
+      {renderSearchBox()}
+      
       {/* Map error message */}
       {mapError && (
         <div className="map-error">
