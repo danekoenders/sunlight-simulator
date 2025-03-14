@@ -1,36 +1,84 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Sunlight Simulator
+
+A web-based application for visualizing sunlight and shadows on a 3D map based on location, date, and time. This tool allows you to:
+
+- View buildings in 3D on a map
+- Adjust time to see how sunlight changes throughout the day
+- Click on any location to determine if it's in sunlight or shadow
+- See sunrise and sunset times for the selected location
+
+## Features
+
+- Interactive 3D map using Mapbox GL JS
+- Time slider to adjust the time of day
+- Sun position calculation with SunCalc.js
+- Responsive design for desktop and mobile
+- Real-time sunlight/shadow determination
+
+## Tech Stack
+
+- Next.js (React)
+- TypeScript
+- Mapbox GL JS for 3D maps and building data
+- SunCalc.js for sun position calculations
+- CSS for styling
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+
+You need to have Node.js and npm installed on your machine. You also need a Mapbox account and API key.
+
+### Setup
+
+1. Clone this repository
+2. Install dependencies:
+
+```bash
+npm install
+```
+
+3. Create a `.env.local` file in the project root and add your Mapbox token:
+
+```
+NEXT_PUBLIC_MAPBOX_TOKEN=your_mapbox_token_here
+```
+
+4. Start the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+5. Open [http://localhost:3000](http://localhost:3000) with your browser to see the application.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## How to Use
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. The map initially centers on San Francisco. You can navigate using the map controls.
+2. Use the time slider at the bottom to change the time of day.
+3. Click on any location on the map to see if it's in direct sunlight or shadow.
+4. The sidebar displays detailed information about the sun position and selected location.
+5. Sunrise and sunset times are marked on the time slider.
 
-## Learn More
+## Limitations
 
-To learn more about Next.js, take a look at the following resources:
+- The shadow calculation is simplified and only considers whether the sun is above the horizon.
+- For accurate shadow casting from buildings, a more complex algorithm would be needed.
+- The application relies on OpenStreetMap building data, which may not be complete in all areas.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Future Enhancements
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- Implement true shadow casting from 3D buildings
+- Add a date picker to simulate different days of the year
+- Include terrain data for more accurate shadow calculations
+- Add ability to save and share locations
 
-## Deploy on Vercel
+## License
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+This project is open source and available under the [MIT License](LICENSE).
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Acknowledgements
+
+- [Mapbox GL JS](https://docs.mapbox.com/mapbox-gl-js/api/) for the 3D mapping capabilities
+- [SunCalc](https://github.com/mourner/suncalc) for sun position calculations
+- [Next.js](https://nextjs.org/) for the React framework
