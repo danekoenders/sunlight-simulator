@@ -39,6 +39,7 @@ const Map: React.FC<MapProps> = ({
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const sunMarker = useRef<SunMarker | null>(null);
+  const suppressCameraEventsRef = useRef<boolean>(false);
 
   // Map state
   const [lng, setLng] = useState(initialLng);
@@ -283,35 +284,8 @@ const Map: React.FC<MapProps> = ({
     }
 
     // Set up camera behavior for placed state
-    if (map.current && isMapLoaded) {
-      if (placementState === 'placed' && selectedPoint) {
-        // Disable map panning but allow rotation and zoom
-        // Save the current center
-        const placedCenter = new mapboxgl.LngLat(
-          selectedPoint.longitude, 
-          selectedPoint.latitude
-        );
-        
-        // Add camera handler to keep the marker in center
-        const handleMoveEnd = () => {
-          if (map.current && placementState === 'placed' && selectedPoint) {
-            // After any camera movement, reset to the placed point
-            map.current.easeTo({
-              center: [selectedPoint.longitude, selectedPoint.latitude],
-              duration: 300,
-            });
-          }
-        };
-        
-        // Add event listener
-        map.current.on('moveend', handleMoveEnd);
-        
-        // Clean up
-        return () => {
-          map.current?.off('moveend', handleMoveEnd);
-        };
-      }
-    }
+    // Note: camera lock behavior is implemented in the dedicated effect below
+    // to avoid recursive easeTo loops on 'moveend'.
   }, [placementState, centerMarker, onPlacementStateChange, isMapLoaded, selectedPoint]);
 
   // Update center marker position when map moves (but only in idle state)
@@ -359,7 +333,7 @@ const Map: React.FC<MapProps> = ({
       
       // Create a smart move handler that won't cause infinite recursion
       const handleMove = () => {
-        if (!map.current || isHandlingMove) return;
+        if (!map.current || isHandlingMove || suppressCameraEventsRef.current) return;
         
         // Get current center
         const currentCenter = map.current.getCenter();
@@ -383,31 +357,8 @@ const Map: React.FC<MapProps> = ({
         }
       };
       
-      // This is triggered after rotation/zoom gestures end
-      const handleMoveEnd = () => {
-        if (!map.current) return;
-        
-        // Make sure we're at the correct center
-        // Get current center
-        const currentCenter = map.current.getCenter();
-        
-        // Check if center has moved
-        const hasMoved = 
-          Math.abs(currentCenter.lng - center[0]) > 0.0001 || 
-          Math.abs(currentCenter.lat - center[1]) > 0.0001;
-          
-        if (hasMoved) {
-          // Restore center with animation
-          map.current.easeTo({
-            center: center,
-            duration: 300
-          });
-        }
-      };
-      
-      // Add event listeners
+      // Add event listeners (move only to avoid recursive loops)
       map.current.on('move', handleMove);
-      map.current.on('moveend', handleMoveEnd);
       
       // Clean up
       return () => {
@@ -415,7 +366,6 @@ const Map: React.FC<MapProps> = ({
         
         // Remove event listeners
         map.current.off('move', handleMove);
-        map.current.off('moveend', handleMoveEnd);
         
         // Restore previous settings
         if (wasDragPanEnabled && !map.current.dragPan.isEnabled()) {
@@ -522,6 +472,28 @@ const Map: React.FC<MapProps> = ({
       sunMarker.current.updatePosition(newSunPosition, map.current.getCenter());
     }
 
+    // Smoothly rotate/tilt camera with time slider changes
+    try {
+      const bearingTarget = (newSunPosition.azimuthDegrees + 180) % 360;
+      const pitchTarget = Math.max(30, Math.min(75, 75 - newSunPosition.altitudeDegrees * 0.5));
+
+      const centerCoord: [number, number] | undefined = selectedPoint
+        ? [selectedPoint.longitude, selectedPoint.latitude]
+        : undefined;
+
+      suppressCameraEventsRef.current = true;
+      map.current.easeTo({
+        bearing: bearingTarget,
+        pitch: pitchTarget,
+        ...(centerCoord ? { center: centerCoord } : {}),
+        duration: 250,
+      });
+      // release after next tick
+      setTimeout(() => { suppressCameraEventsRef.current = false; }, 0);
+    } catch {
+      suppressCameraEventsRef.current = false;
+    }
+
     // Update ray tracing for the selected point when time changes
     if (
       selectedPoint &&
@@ -618,6 +590,21 @@ const Map: React.FC<MapProps> = ({
             "line-dasharray",
             isInSunlight ? [2, 2] : [1, 1]
           );
+
+          // Adjust camera when occluded to better include occluders in view
+          try {
+            const currentZoom = map.current.getZoom();
+            const zoomTarget = isInSunlight ? currentZoom : Math.max(14, currentZoom - 0.6);
+            suppressCameraEventsRef.current = true;
+            map.current.easeTo({
+              center: [selectedPoint.longitude, selectedPoint.latitude],
+              zoom: zoomTarget,
+              duration: 250,
+            });
+            setTimeout(() => { suppressCameraEventsRef.current = false; }, 0);
+          } catch {
+            suppressCameraEventsRef.current = false;
+          }
 
           // Update the marker if needed
           if (isInSunlight !== selectedPoint.isInSunlight) {
@@ -917,7 +904,6 @@ const Map: React.FC<MapProps> = ({
     <div
       className="map-container"
       ref={mapContainer}
-      style={{ width: "100%", height: "100%" }}
     >
       {/* Add SearchBox component only when map is loaded */}
       {isMapLoaded && map.current && (

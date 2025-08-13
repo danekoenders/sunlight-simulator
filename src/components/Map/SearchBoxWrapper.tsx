@@ -40,11 +40,23 @@ const SearchBoxWrapper: React.FC<SearchBoxWrapperProps> = ({
       <SearchBox
         accessToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ""}
         onRetrieve={handleSearchResult}
-        placeholder="Zoek je favoriete terrasje..."
+        placeholder="Search a place or address"
         value=""
         map={map}
-        marker={false} // Don't show the search marker
+        marker={false}
         mapboxgl={mapboxgl}
+        theme={{
+          variables: {
+            unit: '14px',
+            borderRadius: '10px',
+            boxShadow: '0 8px 30px rgba(0,0,0,0.15)',
+            colorBackground: 'rgba(255,255,255,0.95)',
+            colorText: '#111827',
+            colorPrimary: '#0ea5e9',
+            colorSecondary: '#111827',
+            padding: '8px',
+          },
+        }}
       />
     </div>
   );
