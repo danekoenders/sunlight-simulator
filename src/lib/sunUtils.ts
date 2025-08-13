@@ -1,7 +1,6 @@
-import * as SunCalc from 'suncalc';
 import * as turf from '@turf/turf';
 import { Polygon } from 'geojson';
-import mapboxgl from 'mapbox-gl';
+import * as SunCalc from 'suncalc';
 
 export interface SunPosition {
   altitude: number; // Radians

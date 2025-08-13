@@ -24,7 +24,7 @@ const SearchBoxWrapper: React.FC<SearchBoxWrapperProps> = ({
     // Fly to the location (but don't place a marker yet)
     map.flyTo({
       center: [lng, lat],
-      zoom: 16,
+      zoom: 8,
       duration: 2000
     });
 
@@ -40,7 +40,7 @@ const SearchBoxWrapper: React.FC<SearchBoxWrapperProps> = ({
       <SearchBox
         accessToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ""}
         onRetrieve={handleSearchResult}
-        placeholder="Search for a location..."
+        placeholder="Zoek je favoriete terrasje..."
         value=""
         map={map}
         marker={false} // Don't show the search marker
