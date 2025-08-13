@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
+import "./app.css";
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 const geistSans = Geist({

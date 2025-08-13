@@ -10,7 +10,7 @@ const DynamicMap = dynamic(
   { ssr: false }
 );
 
-export default function Home() {
+export default function AppPage() {
   // State for current time (default to current date/time)
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
   
