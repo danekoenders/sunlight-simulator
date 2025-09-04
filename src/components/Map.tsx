@@ -14,6 +14,7 @@ import {
   sunPositionToMapboxLight,
   isPointInSunlight,
   isPointInSunlightWithShadows,
+  getSunTimes,
   SunPosition,
 } from "../lib/sunUtils";
 import * as turf from "@turf/turf";
@@ -55,6 +56,8 @@ const Map: React.FC<MapProps> = ({
   // New state for placement mode
   const [placementState, setPlacementState] = useState<PlacementState>('idle');
   const [centerMarker, setCenterMarker] = useState<mapboxgl.Marker | null>(null);
+  const ZOOM_THRESHOLD = 18; // show UI only when zoomed in enough
+  const [isZoomSufficient, setIsZoomSufficient] = useState<boolean>(false);
 
   // Keep track of animation frame for cleanup
   const requestAnimationFrameId = useRef<number | null>(null);
@@ -147,6 +150,15 @@ const Map: React.FC<MapProps> = ({
         
       setCenterMarker(marker);
 
+      // Initialize zoom-based visibility immediately
+      const startZoom = initializedMap.getZoom();
+      const meetsThreshold = startZoom >= ZOOM_THRESHOLD;
+      setIsZoomSufficient(meetsThreshold);
+      const shouldShowAtStart = placementState === 'idle' && meetsThreshold;
+      markerElement.style.display = shouldShowAtStart ? 'block' : 'none';
+      markerElement.style.opacity = shouldShowAtStart ? '1' : '0';
+      markerElement.style.visibility = shouldShowAtStart ? 'visible' : 'hidden';
+
       // Notify parent if callback is provided
       if (onMapLoad) {
         onMapLoad();
@@ -213,6 +225,18 @@ const Map: React.FC<MapProps> = ({
       });
     });
 
+    // Update UI visibility on zoom
+    const syncZoom = () => {
+      const z = initializedMap.getZoom();
+      setIsZoomSufficient(z >= ZOOM_THRESHOLD);
+      // Toggle center marker visibility at DOM level as well
+      const el = centerMarker?.getElement();
+      if (el) {
+        el.style.display = z >= ZOOM_THRESHOLD && placementState === 'idle' ? 'block' : 'none';
+      }
+    };
+    initializedMap.on('zoom', syncZoom);
+
     // Clean up on unmount
     return () => {
       if (requestAnimationFrameId.current) {
@@ -221,6 +245,7 @@ const Map: React.FC<MapProps> = ({
       if (sunMarker.current) {
         sunMarker.current.remove();
       }
+      initializedMap.off('zoom', syncZoom);
       initializedMap.remove();
     };
   }, []); // Empty dependency array to run only on mount and unmount
@@ -296,28 +321,19 @@ const Map: React.FC<MapProps> = ({
       onPlacementStateChange(placementState === 'placed');
     }
     
-    // Update the center marker visibility based on placement state
+    // Update the center marker visibility based on placement state and zoom threshold
     if (centerMarker) {
       const markerElement = centerMarker.getElement();
-      
-      // Apply visibility directly to the outer Mapbox marker element
-      // This overrides Mapbox's inline styles
-      if (placementState === 'idle') {
-        markerElement.style.display = 'block';
-        markerElement.style.opacity = '1';
-        markerElement.style.visibility = 'visible';
-        console.log('Showing center marker');
-      } else {
-        markerElement.style.display = 'none';
-        markerElement.style.opacity = '0';
-        markerElement.style.visibility = 'hidden';
-      }
+      const shouldShow = placementState === 'idle' && isZoomSufficient;
+      markerElement.style.display = shouldShow ? 'block' : 'none';
+      markerElement.style.opacity = shouldShow ? '1' : '0';
+      markerElement.style.visibility = shouldShow ? 'visible' : 'hidden';
     }
 
     // Set up camera behavior for placed state
     // Note: camera lock behavior is implemented in the dedicated effect below
     // to avoid recursive easeTo loops on 'moveend'.
-  }, [placementState, centerMarker, onPlacementStateChange, isMapLoaded, selectedPoint]);
+  }, [placementState, centerMarker, onPlacementStateChange, isMapLoaded, selectedPoint, isZoomSufficient]);
 
   // Update center marker position when map moves (but only in idle state)
   useEffect(() => {
@@ -503,27 +519,7 @@ const Map: React.FC<MapProps> = ({
       sunMarker.current.updatePosition(newSunPosition, map.current.getCenter());
     }
 
-    // Smoothly rotate/tilt camera with time slider changes
-    try {
-      const bearingTarget = (newSunPosition.azimuthDegrees + 180) % 360;
-      const pitchTarget = Math.max(30, Math.min(75, 75 - newSunPosition.altitudeDegrees * 0.5));
-
-      const centerCoord: [number, number] | undefined = selectedPoint
-        ? [selectedPoint.longitude, selectedPoint.latitude]
-        : undefined;
-
-      suppressCameraEventsRef.current = true;
-      map.current.easeTo({
-        bearing: bearingTarget,
-        pitch: pitchTarget,
-        ...(centerCoord ? { center: centerCoord } : {}),
-        duration: 250,
-      });
-      // release after next tick
-      setTimeout(() => { suppressCameraEventsRef.current = false; }, 0);
-    } catch {
-      suppressCameraEventsRef.current = false;
-    }
+    // Camera orientation handled below within ray-tracing update for consistent behavior
 
     // Update ray tracing for the selected point when time changes
     if (
@@ -622,14 +618,26 @@ const Map: React.FC<MapProps> = ({
             isInSunlight ? [2, 2] : [1, 1]
           );
 
-          // Adjust camera when occluded to better include occluders in view
+          // Adjust camera to a fixed bearing: midpoint between sunrise and sunset azimuths
           try {
             const currentZoom = map.current.getZoom();
-            const zoomTarget = isInSunlight ? currentZoom : Math.max(14, currentZoom - 0.6);
+            const zoomTarget = currentZoom; // keep zoom unchanged
+            // Compute sunrise and sunset azimuths, then take midpoint
+            const times = getSunTimes(currentTime, selectedPoint.latitude, selectedPoint.longitude);
+            const sunrisePos = getSunPosition(times.sunrise, selectedPoint.latitude, selectedPoint.longitude);
+            const sunsetPos = getSunPosition(times.sunset, selectedPoint.latitude, selectedPoint.longitude);
+            const az1 = (sunrisePos.azimuthDegrees + 360) % 360;
+            const az2 = (sunsetPos.azimuthDegrees + 360) % 360;
+            let delta = ((az2 - az1 + 540) % 360) - 180; // shortest arc [-180,180)
+            const midpoint = (az1 + delta / 2 + 360) % 360;
+            // Point opposite to midpoint so camera faces the ray direction
+            const bearingTarget = midpoint % 360;
+            const pitchTarget = Math.max(30, Math.min(75, 75 - pointSunPosition.altitudeDegrees * 0.5));
             suppressCameraEventsRef.current = true;
             map.current.easeTo({
-              center: [selectedPoint.longitude, selectedPoint.latitude],
               zoom: zoomTarget,
+              bearing: bearingTarget,
+              pitch: pitchTarget,
               duration: 250,
             });
             setTimeout(() => { suppressCameraEventsRef.current = false; }, 0);
@@ -955,6 +963,7 @@ const Map: React.FC<MapProps> = ({
           onResetLocation={handleResetButtonClick}
           error={mapError}
           onDismissError={handleDismissError}
+          isZoomSufficient={isZoomSufficient}
         />
       )}
       

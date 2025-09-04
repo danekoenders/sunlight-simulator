@@ -69,9 +69,11 @@ const TimeSlider: React.FC<TimeSliderProps> = ({
     const hours = date.getHours();
     const minutes = date.getMinutes();
     const totalMinutes = hours * 60 + minutes;
+    // Snap to 5-minute increments
+    const roundedMinutes = Math.round(totalMinutes / 5) * 5;
     
-    setSliderValue(totalMinutes);
-    updateDisplayTime(totalMinutes);
+    setSliderValue(roundedMinutes);
+    updateDisplayTime(roundedMinutes);
     setInitialized(true);
   }, [date, updateDisplayTime]);
   
@@ -90,7 +92,9 @@ const TimeSlider: React.FC<TimeSliderProps> = ({
 
   // Handle slider change
   const handleSliderChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const newValue = parseInt(e.target.value);
+    const rawValue = parseInt(e.target.value);
+    // Snap to nearest 5 minutes
+    const newValue = Math.round(rawValue / 5) * 5;
     setSliderValue(newValue);
     updateDisplayTime(newValue);
     
@@ -147,7 +151,9 @@ const TimeSlider: React.FC<TimeSliderProps> = ({
         <input
           type="range"
           min="0"
-          max="1439" // 23 hours and 59 minutes (0-based)
+          // Use 5-minute increments across 24 hours (0..1435)
+          max="1435"
+          step={5}
           value={sliderValue}
           onChange={handleSliderChange}
           className="time-slider"

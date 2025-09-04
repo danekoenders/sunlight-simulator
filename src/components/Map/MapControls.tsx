@@ -10,6 +10,7 @@ interface MapControlsProps {
   onResetLocation: () => void;
   error: string | null;
   onDismissError: () => void;
+  isZoomSufficient: boolean;
 }
 
 const MapControls: React.FC<MapControlsProps> = ({
@@ -22,6 +23,7 @@ const MapControls: React.FC<MapControlsProps> = ({
   onResetLocation,
   error,
   onDismissError,
+  isZoomSufficient,
 }) => {
   return (
     <>
@@ -33,8 +35,8 @@ const MapControls: React.FC<MapControlsProps> = ({
         </div>
       )}
       
-      {/* Check button in idle state */}
-      {placementState === 'idle' && (
+      {/* Check button in idle state (only above zoom threshold) */}
+      {placementState === 'idle' && isZoomSufficient && (
         <div className="map-control-button-container">
           <button 
             className="check-button"
