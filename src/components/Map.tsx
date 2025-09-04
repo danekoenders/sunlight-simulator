@@ -141,9 +141,13 @@ const Map: React.FC<MapProps> = ({
       `;
       markerElement.appendChild(markerInner);
 
+      // Vertical pixel offset so the marker sits below the exact center
+      const CENTER_MARKER_OFFSET_Y = 200;
+
       const marker = new mapboxgl.Marker({
         element: markerElement,
-        anchor: 'center', // Center on map, inner div applies vertical offset
+        anchor: 'center',
+        offset: [0, CENTER_MARKER_OFFSET_Y],
       })
         .setLngLat(initializedMap.getCenter())
         .addTo(initializedMap);
@@ -628,7 +632,7 @@ const Map: React.FC<MapProps> = ({
             const sunsetPos = getSunPosition(times.sunset, selectedPoint.latitude, selectedPoint.longitude);
             const az1 = (sunrisePos.azimuthDegrees + 360) % 360;
             const az2 = (sunsetPos.azimuthDegrees + 360) % 360;
-            let delta = ((az2 - az1 + 540) % 360) - 180; // shortest arc [-180,180)
+            const delta = ((az2 - az1 + 540) % 360) - 180; // shortest arc [-180,180)
             const midpoint = (az1 + delta / 2 + 360) % 360;
             // Point opposite to midpoint so camera faces the ray direction
             const bearingTarget = midpoint % 360;
