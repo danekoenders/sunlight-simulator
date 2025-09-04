@@ -75,6 +75,7 @@ body {
   width: 50%;
   height: 90%;
   border-radius: 30px;
+  position: relative; /* anchor absolutely positioned children like the time slider */
 }
 
 .sidebar {
@@ -134,6 +135,23 @@ body {
   width: 100%;
 }
 
+/* Time slider inside map styling */
+.map-time-slider {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  background-color: rgba(255, 255, 255, 0.95);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(8px);
+  min-width: 300px;
+  max-width: 500px;
+  width: calc(100% - 40px);
+}
+
 .time-info {
   display: flex;
   justify-content: space-between;
@@ -183,15 +201,8 @@ body {
   height: 8px;
   -webkit-appearance: none;
   appearance: none;
-  background: linear-gradient(
-    to right,
-    #151e3f,
-    /* midnight blue */ #2a4483,
-    /* dark blue for dawn */ #5386e4,
-    /* blue for morning */ #e3f2fd,
-    /* light blue for noon */ #ffddb5,
-    /* orange for sunset */ #151e3f /* back to midnight */
-  );
+  /* Mostly daylight with thin bands for predawn and twilight */
+  background: linear-gradient(to right, #151e3f 0%, #2a4483 2%, #FFDDB5 20%, #FFDDB5 80%, #2a4483 98%, #151e3f 100%);
   outline: none;
   border-radius: var(--border-radius);
 }
@@ -762,9 +773,23 @@ body {
   flex-direction: column;
   align-items: center;
   pointer-events: none;
-  transform: translateY(-50%);
+  /* Centered exactly on map center; vertical offset handled by marker anchor/offset */
+  transform: translateY(0);
   transition: opacity 0.3s ease, transform 0.3s ease;
   z-index: 10;
+}
+
+/* Center marker visibility states - override Mapbox inline styles */
+.center-marker-visible {
+  opacity: 1 !important;
+  visibility: visible !important;
+  display: flex !important;
+}
+
+.center-marker-hidden {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  display: none !important;
 }
 
 .center-marker-icon {

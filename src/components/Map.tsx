@@ -14,6 +14,7 @@ import {
   sunPositionToMapboxLight,
   isPointInSunlight,
   isPointInSunlightWithShadows,
+  getSunTimes,
   SunPosition,
 } from "../lib/sunUtils";
 import * as turf from "@turf/turf";
@@ -24,6 +25,7 @@ import { SunMarker } from "./Map/SunMarker";
 import { calculate3DDestinationPoint, createRay3DSegments } from "./Map/RayTracing";
 import SearchBoxWrapper from "./Map/SearchBoxWrapper";
 import MapControls from "./Map/MapControls";
+import TimeSlider from "./TimeSlider";
 import { MapProps, PlacementState, SelectedPoint } from "./Map/types";
 
 const Map: React.FC<MapProps> = ({
@@ -35,6 +37,7 @@ const Map: React.FC<MapProps> = ({
   time,
   currentTime,
   onPlacementStateChange,
+  onTimeChange,
 }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -53,6 +56,8 @@ const Map: React.FC<MapProps> = ({
   // New state for placement mode
   const [placementState, setPlacementState] = useState<PlacementState>('idle');
   const [centerMarker, setCenterMarker] = useState<mapboxgl.Marker | null>(null);
+  const ZOOM_THRESHOLD = 18; // show UI only when zoomed in enough
+  const [isZoomSufficient, setIsZoomSufficient] = useState<boolean>(false);
 
   // Keep track of animation frame for cleanup
   const requestAnimationFrameId = useRef<number | null>(null);
@@ -96,17 +101,37 @@ const Map: React.FC<MapProps> = ({
 
     map.current = initializedMap;
 
-    // Add navigation controls to the map
-    initializedMap.addControl(new mapboxgl.NavigationControl(), "top-right");
+    // Navigation controls removed for cleaner interface
+    // initializedMap.addControl(new mapboxgl.NavigationControl(), "top-right");
 
     // Wait for map to be fully loaded
     initializedMap.on("load", () => {
       setIsMapLoaded(true);
 
-      // Create the center marker once the map is loaded
-      const element = document.createElement('div');
-      element.className = 'center-marker';
-      element.innerHTML = `
+      // Try to geolocate user once and center the map accordingly
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const userLngLat: [number, number] = [pos.coords.longitude, pos.coords.latitude];
+            try {
+              initializedMap.setCenter(userLngLat);
+              setLng(parseFloat(userLngLat[0].toFixed(4)));
+              setLat(parseFloat(userLngLat[1].toFixed(4)));
+            } catch {}
+          },
+          () => {
+            // Ignore errors; fallback to initial center
+          },
+          { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+        );
+      }
+
+      // Create the center marker using Mapbox Marker with nested div approach
+      // Outer div for Mapbox positioning, inner div for our custom styling and transforms
+      const markerElement = document.createElement('div');
+      const markerInner = document.createElement('div');
+      markerInner.className = 'center-marker center-marker-visible';
+      markerInner.innerHTML = `
         <div class="center-marker-icon">
           <div class="center-marker-pin"></div>
           <div class="center-marker-point"></div>
@@ -114,15 +139,29 @@ const Map: React.FC<MapProps> = ({
         </div>
         <div class="center-marker-text">Move map to place pin</div>
       `;
+      markerElement.appendChild(markerInner);
+
+      // Vertical pixel offset so the marker sits below the exact center
+      const CENTER_MARKER_OFFSET_Y = 200;
 
       const marker = new mapboxgl.Marker({
-        element,
-        anchor: 'bottom',
+        element: markerElement,
+        anchor: 'center',
+        offset: [0, CENTER_MARKER_OFFSET_Y],
       })
         .setLngLat(initializedMap.getCenter())
         .addTo(initializedMap);
         
       setCenterMarker(marker);
+
+      // Initialize zoom-based visibility immediately
+      const startZoom = initializedMap.getZoom();
+      const meetsThreshold = startZoom >= ZOOM_THRESHOLD;
+      setIsZoomSufficient(meetsThreshold);
+      const shouldShowAtStart = placementState === 'idle' && meetsThreshold;
+      markerElement.style.display = shouldShowAtStart ? 'block' : 'none';
+      markerElement.style.opacity = shouldShowAtStart ? '1' : '0';
+      markerElement.style.visibility = shouldShowAtStart ? 'visible' : 'hidden';
 
       // Notify parent if callback is provided
       if (onMapLoad) {
@@ -190,6 +229,18 @@ const Map: React.FC<MapProps> = ({
       });
     });
 
+    // Update UI visibility on zoom
+    const syncZoom = () => {
+      const z = initializedMap.getZoom();
+      setIsZoomSufficient(z >= ZOOM_THRESHOLD);
+      // Toggle center marker visibility at DOM level as well
+      const el = centerMarker?.getElement();
+      if (el) {
+        el.style.display = z >= ZOOM_THRESHOLD && placementState === 'idle' ? 'block' : 'none';
+      }
+    };
+    initializedMap.on('zoom', syncZoom);
+
     // Clean up on unmount
     return () => {
       if (requestAnimationFrameId.current) {
@@ -198,6 +249,7 @@ const Map: React.FC<MapProps> = ({
       if (sunMarker.current) {
         sunMarker.current.remove();
       }
+      initializedMap.off('zoom', syncZoom);
       initializedMap.remove();
     };
   }, []); // Empty dependency array to run only on mount and unmount
@@ -273,20 +325,19 @@ const Map: React.FC<MapProps> = ({
       onPlacementStateChange(placementState === 'placed');
     }
     
-    // Update the center marker visibility based on placement state
+    // Update the center marker visibility based on placement state and zoom threshold
     if (centerMarker) {
       const markerElement = centerMarker.getElement();
-      if (placementState === 'idle') {
-        markerElement.style.display = 'block';
-      } else {
-        markerElement.style.display = 'none';
-      }
+      const shouldShow = placementState === 'idle' && isZoomSufficient;
+      markerElement.style.display = shouldShow ? 'block' : 'none';
+      markerElement.style.opacity = shouldShow ? '1' : '0';
+      markerElement.style.visibility = shouldShow ? 'visible' : 'hidden';
     }
 
     // Set up camera behavior for placed state
     // Note: camera lock behavior is implemented in the dedicated effect below
     // to avoid recursive easeTo loops on 'moveend'.
-  }, [placementState, centerMarker, onPlacementStateChange, isMapLoaded, selectedPoint]);
+  }, [placementState, centerMarker, onPlacementStateChange, isMapLoaded, selectedPoint, isZoomSufficient]);
 
   // Update center marker position when map moves (but only in idle state)
   useEffect(() => {
@@ -472,27 +523,7 @@ const Map: React.FC<MapProps> = ({
       sunMarker.current.updatePosition(newSunPosition, map.current.getCenter());
     }
 
-    // Smoothly rotate/tilt camera with time slider changes
-    try {
-      const bearingTarget = (newSunPosition.azimuthDegrees + 180) % 360;
-      const pitchTarget = Math.max(30, Math.min(75, 75 - newSunPosition.altitudeDegrees * 0.5));
-
-      const centerCoord: [number, number] | undefined = selectedPoint
-        ? [selectedPoint.longitude, selectedPoint.latitude]
-        : undefined;
-
-      suppressCameraEventsRef.current = true;
-      map.current.easeTo({
-        bearing: bearingTarget,
-        pitch: pitchTarget,
-        ...(centerCoord ? { center: centerCoord } : {}),
-        duration: 250,
-      });
-      // release after next tick
-      setTimeout(() => { suppressCameraEventsRef.current = false; }, 0);
-    } catch {
-      suppressCameraEventsRef.current = false;
-    }
+    // Camera orientation handled below within ray-tracing update for consistent behavior
 
     // Update ray tracing for the selected point when time changes
     if (
@@ -591,14 +622,26 @@ const Map: React.FC<MapProps> = ({
             isInSunlight ? [2, 2] : [1, 1]
           );
 
-          // Adjust camera when occluded to better include occluders in view
+          // Adjust camera to a fixed bearing: midpoint between sunrise and sunset azimuths
           try {
             const currentZoom = map.current.getZoom();
-            const zoomTarget = isInSunlight ? currentZoom : Math.max(14, currentZoom - 0.6);
+            const zoomTarget = currentZoom; // keep zoom unchanged
+            // Compute sunrise and sunset azimuths, then take midpoint
+            const times = getSunTimes(currentTime, selectedPoint.latitude, selectedPoint.longitude);
+            const sunrisePos = getSunPosition(times.sunrise, selectedPoint.latitude, selectedPoint.longitude);
+            const sunsetPos = getSunPosition(times.sunset, selectedPoint.latitude, selectedPoint.longitude);
+            const az1 = (sunrisePos.azimuthDegrees + 360) % 360;
+            const az2 = (sunsetPos.azimuthDegrees + 360) % 360;
+            const delta = ((az2 - az1 + 540) % 360) - 180; // shortest arc [-180,180)
+            const midpoint = (az1 + delta / 2 + 360) % 360;
+            // Point opposite to midpoint so camera faces the ray direction
+            const bearingTarget = midpoint % 360;
+            const pitchTarget = Math.max(30, Math.min(75, 75 - pointSunPosition.altitudeDegrees * 0.5));
             suppressCameraEventsRef.current = true;
             map.current.easeTo({
-              center: [selectedPoint.longitude, selectedPoint.latitude],
               zoom: zoomTarget,
+              bearing: bearingTarget,
+              pitch: pitchTarget,
               duration: 250,
             });
             setTimeout(() => { suppressCameraEventsRef.current = false; }, 0);
@@ -924,7 +967,20 @@ const Map: React.FC<MapProps> = ({
           onResetLocation={handleResetButtonClick}
           error={mapError}
           onDismissError={handleDismissError}
+          isZoomSufficient={isZoomSufficient}
         />
+      )}
+      
+      {/* Time slider - only show when in placed state and onTimeChange is provided */}
+      {isMapLoaded && placementState === 'placed' && selectedPoint && onTimeChange && (
+        <div className="map-time-slider">
+          <TimeSlider 
+            date={currentTime}
+            latitude={selectedPoint.latitude}
+            longitude={selectedPoint.longitude}
+            onTimeChange={onTimeChange}
+          />
+        </div>
       )}
     </div>
   );
