@@ -24,6 +24,7 @@ import { SunMarker } from "./Map/SunMarker";
 import { calculate3DDestinationPoint, createRay3DSegments } from "./Map/RayTracing";
 import SearchBoxWrapper from "./Map/SearchBoxWrapper";
 import MapControls from "./Map/MapControls";
+import TimeSlider from "./TimeSlider";
 import { MapProps, PlacementState, SelectedPoint } from "./Map/types";
 
 const Map: React.FC<MapProps> = ({
@@ -35,6 +36,7 @@ const Map: React.FC<MapProps> = ({
   time,
   currentTime,
   onPlacementStateChange,
+  onTimeChange,
 }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -96,17 +98,37 @@ const Map: React.FC<MapProps> = ({
 
     map.current = initializedMap;
 
-    // Add navigation controls to the map
-    initializedMap.addControl(new mapboxgl.NavigationControl(), "top-right");
+    // Navigation controls removed for cleaner interface
+    // initializedMap.addControl(new mapboxgl.NavigationControl(), "top-right");
 
     // Wait for map to be fully loaded
     initializedMap.on("load", () => {
       setIsMapLoaded(true);
 
-      // Create the center marker once the map is loaded
-      const element = document.createElement('div');
-      element.className = 'center-marker';
-      element.innerHTML = `
+      // Try to geolocate user once and center the map accordingly
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const userLngLat: [number, number] = [pos.coords.longitude, pos.coords.latitude];
+            try {
+              initializedMap.setCenter(userLngLat);
+              setLng(parseFloat(userLngLat[0].toFixed(4)));
+              setLat(parseFloat(userLngLat[1].toFixed(4)));
+            } catch {}
+          },
+          () => {
+            // Ignore errors; fallback to initial center
+          },
+          { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+        );
+      }
+
+      // Create the center marker using Mapbox Marker with nested div approach
+      // Outer div for Mapbox positioning, inner div for our custom styling and transforms
+      const markerElement = document.createElement('div');
+      const markerInner = document.createElement('div');
+      markerInner.className = 'center-marker center-marker-visible';
+      markerInner.innerHTML = `
         <div class="center-marker-icon">
           <div class="center-marker-pin"></div>
           <div class="center-marker-point"></div>
@@ -114,10 +136,11 @@ const Map: React.FC<MapProps> = ({
         </div>
         <div class="center-marker-text">Move map to place pin</div>
       `;
+      markerElement.appendChild(markerInner);
 
       const marker = new mapboxgl.Marker({
-        element,
-        anchor: 'bottom',
+        element: markerElement,
+        anchor: 'top', // Anchor to top so we can position down from center
       })
         .setLngLat(initializedMap.getCenter())
         .addTo(initializedMap);
@@ -276,10 +299,18 @@ const Map: React.FC<MapProps> = ({
     // Update the center marker visibility based on placement state
     if (centerMarker) {
       const markerElement = centerMarker.getElement();
+      
+      // Apply visibility directly to the outer Mapbox marker element
+      // This overrides Mapbox's inline styles
       if (placementState === 'idle') {
         markerElement.style.display = 'block';
+        markerElement.style.opacity = '1';
+        markerElement.style.visibility = 'visible';
+        console.log('Showing center marker');
       } else {
         markerElement.style.display = 'none';
+        markerElement.style.opacity = '0';
+        markerElement.style.visibility = 'hidden';
       }
     }
 
@@ -925,6 +956,18 @@ const Map: React.FC<MapProps> = ({
           error={mapError}
           onDismissError={handleDismissError}
         />
+      )}
+      
+      {/* Time slider - only show when in placed state and onTimeChange is provided */}
+      {isMapLoaded && placementState === 'placed' && selectedPoint && onTimeChange && (
+        <div className="map-time-slider">
+          <TimeSlider 
+            date={currentTime}
+            latitude={selectedPoint.latitude}
+            longitude={selectedPoint.longitude}
+            onTimeChange={onTimeChange}
+          />
+        </div>
       )}
     </div>
   );

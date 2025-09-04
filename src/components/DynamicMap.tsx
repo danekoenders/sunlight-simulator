@@ -12,6 +12,7 @@ interface MapProps {
   zoom?: number;
   time?: Date;
   onPlacementStateChange?: (isPlaced: boolean) => void;
+  onTimeChange?: (newTime: Date) => void;
 }
 
 // Dynamically import the Map component with SSR disabled

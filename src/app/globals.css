@@ -24,26 +24,17 @@ body {
   background: rgb(var(--background-rgb));
   margin: 0;
   padding: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
-    Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+    Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
 }
 
 /* App layout */
 .app-container {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
   height: 100vh;
   width: 100%;
   overflow: hidden;
-}
-
-.app-content {
-  display: flex;
-  flex: 1;
-  overflow: hidden;
-  width: 100%;
 }
 
 .app-header {
@@ -61,21 +52,16 @@ body {
   font-weight: 600;
 }
 
+.app-content {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
 .map-section {
   flex: 1;
   position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 10%;
-}
-
-/* Map styles */
-.map-container {
-  width: 50%;
-  height: 90%;
-  border-radius: 30px;
-  position: relative; /* anchor absolutely positioned children like the time slider */
+  height: 100%;
 }
 
 .sidebar {
@@ -91,7 +77,7 @@ body {
   .app-content {
     flex-direction: column;
   }
-
+  
   .sidebar {
     width: 100%;
     height: 200px;
@@ -103,6 +89,13 @@ body {
   padding: 1rem;
   box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.1);
   z-index: 5;
+}
+
+/* Map styles */
+.map-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
 }
 
 /* Search box wrapper positioning and style */
@@ -201,14 +194,13 @@ body {
   height: 8px;
   -webkit-appearance: none;
   appearance: none;
-  background: linear-gradient(
-    to right,
-    #151e3f,
-    /* midnight blue */ #2a4483,
-    /* dark blue for dawn */ #5386e4,
-    /* blue for morning */ #e3f2fd,
-    /* light blue for noon */ #ffddb5,
-    /* orange for sunset */ #151e3f /* back to midnight */
+  background: linear-gradient(to right, 
+    #151E3F, /* midnight blue */
+    #2A4483, /* dark blue for dawn */
+    #5386E4, /* blue for morning */
+    #E3F2FD, /* light blue for noon */
+    #FFDDB5, /* orange for sunset */
+    #151E3F  /* back to midnight */
   );
   outline: none;
   border-radius: var(--border-radius);
@@ -244,8 +236,7 @@ body {
   color: var(--secondary-color);
 }
 
-.sunrise-marker,
-.sunset-marker {
+.sunrise-marker, .sunset-marker {
   position: absolute;
   top: -20px;
   transform: translateX(-50%);
@@ -255,19 +246,19 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 4px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 0 4px rgba(0,0,0,0.3);
   width: 20px;
   height: 20px;
   border-radius: 50%;
 }
 
 .sunrise-marker {
-  color: #ff8c00; /* Orange for sunrise */
+  color: #FF8C00; /* Orange for sunrise */
   background-color: rgba(255, 255, 220, 0.9);
 }
 
 .sunset-marker {
-  color: #3f51b5; /* Indigo for sunset */
+  color: #3F51B5; /* Indigo for sunset */
   background-color: rgba(220, 235, 255, 0.9);
 }
 
@@ -325,28 +316,28 @@ body {
 
 /* Sunlight popup styles */
 .sunlight-popup .mapboxgl-popup-content {
-  border-left: 4px solid #ffdd00;
+  border-left: 4px solid #FFDD00;
   background-color: rgba(255, 250, 220, 0.95);
 }
 
 .sunlight-popup .mapboxgl-popup-content h3 {
   color: #886600;
   margin-bottom: 8px;
-  border-bottom-color: #ffe082;
+  border-bottom-color: #FFE082;
 }
 
 /* Shadow popup styles */
 .shadow-popup .mapboxgl-popup-content {
   font-size: 14px;
   max-width: 220px;
-  border-left: 4px solid #3f51b5;
+  border-left: 4px solid #3F51B5;
   background-color: rgba(220, 237, 255, 0.95);
 }
 
 .shadow-popup .mapboxgl-popup-content h3 {
-  color: #0d47a1;
+  color: #0D47A1;
   margin-bottom: 8px;
-  border-bottom-color: #90caf9;
+  border-bottom-color: #90CAF9;
 }
 
 .shadow-info {
@@ -369,20 +360,20 @@ body {
 
 /* Status colors */
 .sun-above {
-  color: #4caf50; /* Green */
+  color: #4CAF50; /* Green */
 }
 
 .sun-below {
-  color: #607d8b; /* Blue-grey */
+  color: #607D8B; /* Blue-grey */
 }
 
 .in-sun {
-  color: #ff9800; /* Orange */
+  color: #FF9800; /* Orange */
   font-weight: 600;
 }
 
 .in-shadow {
-  color: #3f51b5; /* Indigo */
+  color: #3F51B5; /* Indigo */
   font-weight: 600;
 }
 
@@ -420,7 +411,7 @@ body {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background-color: #ffff00;
+  background-color: #FFFF00;
   transform: translate(-50%, -50%);
   pointer-events: none;
   box-shadow: 0 0 3px 1px rgba(255, 255, 255, 0.8);
@@ -440,11 +431,7 @@ body {
 
 .sun-beam {
   position: absolute;
-  background: linear-gradient(
-    90deg,
-    rgba(255, 255, 0, 0.8) 0%,
-    rgba(255, 255, 0, 0.1) 100%
-  );
+  background: linear-gradient(90deg, rgba(255, 255, 0, 0.8) 0%, rgba(255, 255, 0, 0.1) 100%);
   height: 2px;
   pointer-events: none;
   z-index: 5;
@@ -454,15 +441,9 @@ body {
 }
 
 @keyframes pulse {
-  0% {
-    opacity: 0.4;
-  }
-  50% {
-    opacity: 0.8;
-  }
-  100% {
-    opacity: 0.4;
-  }
+  0% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+  100% { opacity: 0.4; }
 }
 
 /* Shadow visualization */
@@ -502,16 +483,16 @@ body {
 
 /* Ray tracing visualization */
 .ray-path {
-  stroke: #ffdd00;
+  stroke: #FFDD00;
   stroke-width: 4px;
-  stroke-opacity: 1;
+  stroke-opacity: 1.0;
   stroke-dasharray: 5, 5;
   fill: none;
   pointer-events: none;
 }
 
 .ray-path.blocked {
-  stroke: #3f51b5;
+  stroke: #3F51B5;
   stroke-dasharray: 3, 3;
 }
 
@@ -546,28 +527,20 @@ body {
 }
 
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @keyframes fadeOut {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-  }
+  from { opacity: 1; }
+  to { opacity: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .sun-beam {
     animation: none;
   }
-
+  
   .ray-path {
     animation: none;
     stroke-dasharray: none;
@@ -749,7 +722,7 @@ body {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: #3f51b5;
+  background: #3F51B5;
   cursor: pointer;
   border: 2px solid white;
   box-shadow: 0 0 4px rgba(0, 0, 0, 0.2);
@@ -759,7 +732,7 @@ body {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: #3f51b5;
+  background: #3F51B5;
   cursor: pointer;
   border: 2px solid white;
   box-shadow: 0 0 4px rgba(0, 0, 0, 0.2);
@@ -780,9 +753,23 @@ body {
   flex-direction: column;
   align-items: center;
   pointer-events: none;
-  transform: translateY(-50%);
+  /* Move the marker down from the center point */
+  transform: translateY(200px);
   transition: opacity 0.3s ease, transform 0.3s ease;
   z-index: 10;
+}
+
+/* Center marker visibility states - override Mapbox inline styles */
+.center-marker-visible {
+  opacity: 1 !important;
+  visibility: visible !important;
+  display: flex !important;
+}
+
+.center-marker-hidden {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  display: none !important;
 }
 
 .center-marker-icon {
@@ -798,7 +785,7 @@ body {
   left: 0;
   width: 20px;
   height: 20px;
-  background-color: #4caf50;
+  background-color: #4CAF50;
   border: 2px solid white;
   border-radius: 50%;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
@@ -810,7 +797,7 @@ body {
   left: 8px;
   width: 4px;
   height: 16px;
-  background-color: #4caf50;
+  background-color: #4CAF50;
   border-radius: 2px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
@@ -879,12 +866,12 @@ body {
 
 .placed-marker.sunlight .placed-marker-pin,
 .placed-marker.sunlight .placed-marker-point {
-  background-color: #ffdd00;
+  background-color: #FFDD00;
 }
 
 .placed-marker.shadow .placed-marker-pin,
 .placed-marker.shadow .placed-marker-point {
-  background-color: #3f51b5;
+  background-color: #3F51B5;
 }
 
 .placed-marker-pulse {
@@ -986,8 +973,7 @@ body {
   40% {
     opacity: 0.3;
   }
-  80%,
-  100% {
+  80%, 100% {
     transform: scale(1.5);
     opacity: 0;
   }

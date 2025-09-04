@@ -10,6 +10,7 @@ export interface MapProps {
   zoom?: number;
   time?: Date;
   onPlacementStateChange?: (isPlaced: boolean) => void;
+  onTimeChange?: (newTime: Date) => void;
 }
 
 // Define the placement states

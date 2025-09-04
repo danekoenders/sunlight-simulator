@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import dynamic from 'next/dynamic';
-import TimeSlider from '../components/TimeSlider';
 
 // Import the map component dynamically to avoid SSR issues
 const DynamicMap = dynamic(
@@ -56,21 +55,10 @@ export default function AppPage() {
             zoom={16}
             time={currentTime}
             onPlacementStateChange={handlePlacementStateChange}
-          />
-        </div>
-      </div>
-      
-      {/* Only show the time slider when a location is placed */}
-      {isLocationPlaced && (
-        <div className="footer">
-          <TimeSlider 
-            date={currentTime}
-            latitude={mapLocation.latitude}
-            longitude={mapLocation.longitude}
             onTimeChange={handleTimeChange}
           />
         </div>
-      )}
+      </div>
     </main>
   );
 }
