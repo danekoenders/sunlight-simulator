@@ -201,15 +201,8 @@ body {
   height: 8px;
   -webkit-appearance: none;
   appearance: none;
-  background: linear-gradient(
-    to right,
-    #151e3f,
-    /* midnight blue */ #2a4483,
-    /* dark blue for dawn */ #5386e4,
-    /* blue for morning */ #e3f2fd,
-    /* light blue for noon */ #ffddb5,
-    /* orange for sunset */ #151e3f /* back to midnight */
-  );
+  /* Mostly daylight with thin bands for predawn and twilight */
+  background: linear-gradient(to right, #151e3f 0%, #2a4483 2%, #FFDDB5 20%, #FFDDB5 80%, #2a4483 98%, #151e3f 100%);
   outline: none;
   border-radius: var(--border-radius);
 }
@@ -780,9 +773,23 @@ body {
   flex-direction: column;
   align-items: center;
   pointer-events: none;
-  transform: translateY(-50%);
+  /* Centered exactly on map center; vertical offset handled by marker anchor/offset */
+  transform: translateY(0);
   transition: opacity 0.3s ease, transform 0.3s ease;
   z-index: 10;
+}
+
+/* Center marker visibility states - override Mapbox inline styles */
+.center-marker-visible {
+  opacity: 1 !important;
+  visibility: visible !important;
+  display: flex !important;
+}
+
+.center-marker-hidden {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  display: none !important;
 }
 
 .center-marker-icon {

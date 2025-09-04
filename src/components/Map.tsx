@@ -143,7 +143,7 @@ const Map: React.FC<MapProps> = ({
 
       const marker = new mapboxgl.Marker({
         element: markerElement,
-        anchor: 'top', // Anchor to top so we can position down from center
+        anchor: 'center', // Center on map, inner div applies vertical offset
       })
         .setLngLat(initializedMap.getCenter())
         .addTo(initializedMap);
