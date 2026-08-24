@@ -9,7 +9,9 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@mapbox/search-js-core": "^1.6.0",
     "@mapbox/search-js-react": "^1.0.0",
+    "@mapbox/search-js-web": "^1.6.0",
     "@turf/turf": "^7.2.0",
     "@types/geojson": "^7946.0.16",
     "@types/three": "^0.174.0",
