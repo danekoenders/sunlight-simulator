@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { SearchBox } from '@mapbox/search-js-react';
 import { SearchBoxRetrieveResponse } from '@mapbox/search-js-core';
 import '@mapbox/search-js-web';
@@ -10,51 +10,63 @@ interface SearchBoxWrapperProps {
   className?: string;
 }
 
-const SearchBoxWrapper: React.FC<SearchBoxWrapperProps> = ({ 
-  map, 
-  onLocationSelect,
-  className
-}) => {
-  const handleSearchResult = (result: SearchBoxRetrieveResponse) => {
-    if (!map || !result || !result.features || result.features.length === 0) return;
-    
-    // Get the coordinates from the first feature
-    const [lng, lat] = result.features[0].geometry.coordinates;
-    
-    // Fly to the location (but don't place a marker yet)
-    map.flyTo({
-      center: [lng, lat],
-      zoom: 8,
-      duration: 2000
-    });
+/**
+ * Shade is cast by buildings, so a search has to land close enough to see
+ * them. Anything further out drops below the zoom at which the app can
+ * answer anything, leaving the user staring at a map with no controls.
+ *
+ * The camera is driven here rather than by passing `map` to SearchBox:
+ * that makes the component fit the result's bounding box, which for a
+ * street means framing the whole neighbourhood.
+ */
+const SEARCH_LANDING_ZOOM = 18;
 
-    // If we have a location select handler, call it
-    if (onLocationSelect) {
-      onLocationSelect(lat, lng);
-    }
-  };
+const SearchBoxWrapper: React.FC<SearchBoxWrapperProps> = ({
+  map,
+  onLocationSelect,
+  className,
+}) => {
+  const handleSearchResult = useCallback(
+    (result: SearchBoxRetrieveResponse) => {
+      if (!map || !result?.features?.length) return;
+
+      const [lng, lat] = result.features[0].geometry.coordinates;
+
+      map.flyTo({
+        center: [lng, lat],
+        zoom: SEARCH_LANDING_ZOOM,
+        pitch: 55,
+        duration: 2200,
+        essential: true,
+      });
+
+      onLocationSelect?.(lat, lng);
+    },
+    [map, onLocationSelect]
+  );
 
   return (
     <div className={className || 'search-box-wrapper'}>
-      {/* @ts-expect-error - SearchBox component has incorrect type definitions for its props */}
       <SearchBox
-        accessToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ""}
+        accessToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ''}
         onRetrieve={handleSearchResult}
-        placeholder="Search a place or address"
+        placeholder="Search a street, café or park"
         value=""
-        map={map}
         marker={false}
         mapboxgl={mapboxgl}
         theme={{
           variables: {
             unit: '14px',
-            borderRadius: '10px',
-            boxShadow: '0 8px 30px rgba(0,0,0,0.15)',
-            colorBackground: 'rgba(255,255,255,0.95)',
-            colorText: '#111827',
-            colorPrimary: '#0ea5e9',
-            colorSecondary: '#111827',
-            padding: '8px',
+            borderRadius: '12px',
+            boxShadow:
+              '0 1px 2px rgba(15,24,38,0.08), 0 4px 16px -4px rgba(15,24,38,0.16)',
+            colorBackground: 'var(--panel-solid)',
+            colorText: 'var(--ink)',
+            colorSecondary: 'var(--ink-mid)',
+            colorPrimary: 'var(--sun)',
+            border: '1px solid var(--hairline)',
+            padding: '0.55em 0.9em',
+            fontFamily: 'var(--font-ui), sans-serif',
           },
         }}
       />
@@ -62,4 +74,4 @@ const SearchBoxWrapper: React.FC<SearchBoxWrapperProps> = ({
   );
 };
 
-export default SearchBoxWrapper; 
+export default SearchBoxWrapper;
