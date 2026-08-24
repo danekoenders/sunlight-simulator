@@ -7,25 +7,39 @@ interface TopBarProps {
   onLocationSelect: (lat: number, lng: number) => void;
 }
 
-/** A gnomon: the sun, and the shadow it throws. The whole app in one mark. */
+/**
+ * A sun with a shadow's edge cut across it — the app's whole answer, lit or
+ * shaded, in one disc. The rays only exist on the side still in sun.
+ *
+ * Inherits `currentColor` for the lit half so it tracks the theme's sun, and
+ * names the shade token directly for the other.
+ */
 const BrandMark = () => (
-  <svg className="brand-mark" viewBox="0 0 24 24" fill="none" aria-hidden>
-    <circle cx="12" cy="8" r="3.6" fill="currentColor" />
-    <g stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
-      <path d="M12 1.4v1.8M18.6 8h1.8M3.6 8h1.8M16.7 3.3l-1.3 1.3M8.6 4.6L7.3 3.3" />
+  <svg className="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden>
+    <defs>
+      <clipPath id="brand-disc">
+        <circle cx="16" cy="16" r="8" />
+      </clipPath>
+    </defs>
+    <g transform="translate(-2.95 3.54)">
+      <path
+        d="M9.92 7.32L7.86 4.37M16.69 5.42L16.93 1.83M23.16 8.18L25.59 5.53M26.48 14.39L30.03 13.84M25.18 21.30L28.30 23.10"
+        stroke="currentColor"
+        strokeWidth="2.6"
+        strokeLinecap="round"
+      />
+      <circle cx="16" cy="16" r="8" fill="currentColor" />
+      <g clipPath="url(#brand-disc)">
+        <rect
+          x="-24"
+          y="17"
+          width="80"
+          height="44"
+          fill="var(--shade)"
+          transform="rotate(42 16 16)"
+        />
+      </g>
     </g>
-    <path
-      d="M11 21.5V13h2v8.5z"
-      fill="currentColor"
-      opacity="0.85"
-    />
-    <path
-      d="M13 21.5l7.5-2.6"
-      stroke="currentColor"
-      strokeWidth="1.7"
-      strokeLinecap="round"
-      opacity="0.35"
-    />
   </svg>
 );
 

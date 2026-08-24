@@ -24,6 +24,7 @@ interface VerdictPanelProps {
   onCheck: () => void;
   onReset: () => void;
   onTimeChange: (time: Date) => void;
+  onScrubEnd?: () => void;
 }
 
 const minutesOf = (d: Date) => d.getHours() * 60 + d.getMinutes();
@@ -33,6 +34,16 @@ const formatMinutes = (m: number) => {
   const h = Math.floor(wrapped / 60);
   const min = Math.round(wrapped % 60);
   return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+};
+
+/** How long the wait is, from the scrubbed time to the change. */
+const formatDelay = (m: number) => {
+  const total = Math.round(m);
+  if (total <= 0) return null;
+  if (total < 60) return `${total} min`;
+  const h = Math.floor(total / 60);
+  const min = total % 60;
+  return min === 0 ? `${h} h` : `${h} h ${min} min`;
 };
 
 const SunIcon = () => (
@@ -97,6 +108,7 @@ const VerdictPanel: React.FC<VerdictPanelProps> = ({
   onCheck,
   onReset,
   onTimeChange,
+  onScrubEnd,
 }) => {
   const [copied, setCopied] = useState(false);
 
@@ -216,9 +228,16 @@ const VerdictPanel: React.FC<VerdictPanelProps> = ({
         </>
       );
   } else if (change) {
+    const wait = formatDelay(change.minutes - minutes);
     detail = change.toSun ? (
       <>
-        Sun reaches this spot at <b>{formatMinutes(change.minutes)}</b>.
+        Sun reaches this spot at <b>{formatMinutes(change.minutes)}</b>
+        {wait && (
+          <>
+            , in <b>{wait}</b>
+          </>
+        )}
+        .
       </>
     ) : (
       <>
@@ -274,6 +293,7 @@ const VerdictPanel: React.FC<VerdictPanelProps> = ({
             startMinutes={startMinutes}
             endMinutes={endMinutes}
             onChange={handleArcChange}
+            onScrubEnd={onScrubEnd}
             formatTime={formatMinutes}
           />
           {weather && (

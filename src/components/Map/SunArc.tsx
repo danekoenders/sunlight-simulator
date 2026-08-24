@@ -10,6 +10,8 @@ interface SunArcProps {
   startMinutes: number;
   endMinutes: number;
   onChange: (minutes: number) => void;
+  /** Fired when the scrub gesture finishes, not on every step of it. */
+  onScrubEnd?: () => void;
   formatTime: (minutes: number) => string;
 }
 
@@ -37,6 +39,7 @@ const SunArc: React.FC<SunArcProps> = ({
   startMinutes,
   endMinutes,
   onChange,
+  onScrubEnd,
   formatTime,
 }) => {
   const trackRef = useRef<HTMLDivElement>(null);
@@ -151,6 +154,11 @@ const SunArc: React.FC<SunArcProps> = ({
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
+      // A drag that leaves the track would otherwise select the panel's text
+      // behind it. Suppressing that also suppresses focus, so take focus by
+      // hand — the arrow keys scrub too.
+      e.preventDefault();
+      e.currentTarget.focus();
       e.currentTarget.setPointerCapture(e.pointerId);
       commit(e.clientX);
     },
@@ -163,6 +171,32 @@ const SunArc: React.FC<SunArcProps> = ({
       commit(e.clientX);
     },
     [commit]
+  );
+
+  const handlePointerUp = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.currentTarget.hasPointerCapture(e.pointerId))
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      onScrubEnd?.();
+    },
+    [onScrubEnd]
+  );
+
+  const isScrubKey = (key: string) =>
+    key === "ArrowLeft" ||
+    key === "ArrowRight" ||
+    key === "ArrowUp" ||
+    key === "ArrowDown" ||
+    key === "PageUp" ||
+    key === "PageDown" ||
+    key === "Home" ||
+    key === "End";
+
+  const handleKeyUp = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (isScrubKey(e.key)) onScrubEnd?.();
+    },
+    [onScrubEnd]
   );
 
   const handleKeyDown = useCallback(
@@ -198,7 +232,10 @@ const SunArc: React.FC<SunArcProps> = ({
       aria-valuetext={formatTime(minutes)}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
       onKeyDown={handleKeyDown}
+      onKeyUp={handleKeyUp}
     >
       <svg viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}>
         {/* Below the horizon: the sun is down whatever the buildings do. */}
