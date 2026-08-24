@@ -1,55 +1,108 @@
 'use client';
 
-import { useState } from 'react';
-import dynamic from 'next/dynamic';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import DynamicMap from '../components/DynamicMap';
 
-// Import the map component dynamically to avoid SSR issues
-const DynamicMap = dynamic(
-  () => import('../components/DynamicMap'),
-  { ssr: false }
-);
+// Where the map opens when there's nothing else to go on.
+const FALLBACK = { latitude: 51.9244, longitude: 4.4626, zoom: 17.5 };
+
+interface OpeningView {
+  latitude: number;
+  longitude: number;
+  zoom: number;
+  time: Date;
+  /** True when the link named a spot, so it's worth measuring on arrival. */
+  autoCheck: boolean;
+}
+
+/**
+ * Reads the opening view from the URL so a link carries a whole answer:
+ * this spot, at this time. Falls back to "here, now".
+ */
+function readOpeningView(): OpeningView {
+  const params = new URLSearchParams(window.location.search);
+  const lat = parseFloat(params.get('lat') ?? '');
+  const lng = parseFloat(params.get('lng') ?? '');
+  const zoom = parseFloat(params.get('z') ?? '');
+  const minutes = parseInt(params.get('t') ?? '', 10);
+
+  const hasSpot = Number.isFinite(lat) && Number.isFinite(lng);
+
+  const time = new Date();
+  if (Number.isFinite(minutes) && minutes >= 0 && minutes < 1440) {
+    time.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
+  }
+
+  return {
+    latitude: hasSpot ? lat : FALLBACK.latitude,
+    longitude: hasSpot ? lng : FALLBACK.longitude,
+    zoom: Number.isFinite(zoom) ? zoom : FALLBACK.zoom,
+    time,
+    autoCheck: hasSpot,
+  };
+}
 
 export default function AppPage() {
-  // State for current time (default to current date/time)
-  const [currentTime, setCurrentTime] = useState<Date>(new Date());
-  
-  // Default location (Rotterdam, Netherlands)
-  const [mapLocation, setMapLocation] = useState({
-    latitude: 51.9244,
-    longitude: 4.4626
-  });
-  
-  // Handler for time slider changes
-  const handleTimeChange = (newTime: Date) => {
-    setCurrentTime(newTime);
-  };
-  
-  // Handler for location selection on map
-  const handleLocationSelect = (lat: number, lng: number) => {
-    // Update mapLocation when a location is selected on the map
-    setMapLocation({
-      latitude: lat,
-      longitude: lng
+  // Resolved on the client only: the opening view depends on the URL and on
+  // the current time, neither of which the server can know.
+  const [view, setView] = useState<OpeningView | null>(null);
+  const [currentTime, setCurrentTime] = useState<Date | null>(null);
+  const spotRef = useRef<{ lat: number; lng: number } | null>(null);
+
+  useEffect(() => {
+    const opening = readOpeningView();
+    setView(opening);
+    setCurrentTime(opening.time);
+  }, []);
+
+  /** Keeps the address bar in step, so "copy link" always shares what's on screen. */
+  const syncUrl = useCallback(() => {
+    if (!spotRef.current || !currentTime) return;
+
+    const params = new URLSearchParams({
+      lat: spotRef.current.lat.toFixed(6),
+      lng: spotRef.current.lng.toFixed(6),
+      t: String(currentTime.getHours() * 60 + currentTime.getMinutes()),
     });
-    
-    console.log('Location selected:', lat, lng);
-  };
+
+    window.history.replaceState(null, '', `?${params.toString()}`);
+  }, [currentTime]);
+
+  useEffect(() => {
+    syncUrl();
+  }, [syncUrl]);
+
+  const handleTimeChange = useCallback((newTime: Date) => {
+    setCurrentTime(newTime);
+  }, []);
+
+  const handleSpotChange = useCallback(
+    (spot: { lat: number; lng: number } | null) => {
+      spotRef.current = spot;
+      if (spot) {
+        syncUrl();
+      } else {
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+    },
+    [syncUrl]
+  );
+
+  if (!view || !currentTime) {
+    return <main className="app" />;
+  }
 
   return (
-    <main className="app-container">
-      <div className="app-content">
-        <div className="map-section">
-          <DynamicMap 
-            currentTime={currentTime} 
-            onLocationSelect={handleLocationSelect}
-            lat={mapLocation.latitude}
-            lng={mapLocation.longitude}
-            zoom={16}
-            time={currentTime}
-            onTimeChange={handleTimeChange}
-          />
-        </div>
-      </div>
+    <main className="app">
+      <DynamicMap
+        currentTime={currentTime}
+        lat={view.latitude}
+        lng={view.longitude}
+        zoom={view.zoom}
+        autoCheck={view.autoCheck}
+        onTimeChange={handleTimeChange}
+        onSpotChange={handleSpotChange}
+      />
     </main>
   );
 }

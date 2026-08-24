@@ -373,3 +373,154 @@ export function getSunTimes(date: Date, latitude: number, longitude: number) {
     nauticalDusk: times.nauticalDusk
   };
 } 
+/* ------------------------------------------------------------------ *
+ * Day timeline
+ *
+ * The UI draws the whole day as the sun's real altitude curve, tinted
+ * sun/shade per sample. Running the full ray-trace once per sample would
+ * re-query the map for buildings every time, so the expensive parts are
+ * hoisted: query the buildings once, precompute each one's angular height
+ * from the point, then each sample is a cheap scalar test plus an
+ * intersection check against the few buildings tall enough to matter.
+ * ------------------------------------------------------------------ */
+
+interface ShadowCaster {
+  feature: GeoJSON.Feature;
+  /** How high this building sits above the horizon, seen from the point. */
+  angularHeightDegrees: number;
+}
+
+/**
+ * Collects the buildings near a point that are tall enough to ever shadow it,
+ * annotated with the sun altitude they can block.
+ */
+export function collectShadowCasters(
+  map: mapboxgl.Map,
+  point: [number, number],
+  radiusInMeters: number = 500
+): ShadowCaster[] {
+  const buildings = getNearbyBuildings(map, point, radiusInMeters);
+  const pointFeature = turf.point(point);
+  const casters: ShadowCaster[] = [];
+
+  for (const building of buildings) {
+    const height = building.properties?.height;
+    if (typeof height !== 'number' || height <= 0) continue;
+    if (building.geometry?.type !== 'Polygon') continue;
+
+    try {
+      // A building the point stands in can't shade it: the ray would leave
+      // through its own walls at every sun angle, so the spot would read as
+      // shaded all day long.
+      if (
+        turf.booleanPointInPolygon(
+          pointFeature,
+          building as GeoJSON.Feature<Polygon>
+        )
+      )
+        continue;
+
+      const distance = turf.distance(pointFeature, turf.centroid(building), {
+        units: 'meters',
+      });
+      if (distance < 1) continue;
+
+      casters.push({
+        feature: building,
+        angularHeightDegrees: Math.atan2(height, distance) * (180 / Math.PI),
+      });
+    } catch {
+      // Skip malformed geometry rather than losing the whole set.
+    }
+  }
+
+  return casters;
+}
+
+/**
+ * Tests one sun position against a prepared caster set.
+ */
+export function isShadowedByCasters(
+  point: [number, number],
+  sunPosition: SunPosition,
+  casters: ShadowCaster[]
+): boolean {
+  if (sunPosition.altitudeDegrees <= 0) return true;
+
+  const rayBearing = (sunPosition.azimuthDegrees + 180) % 360;
+  const rayEnd = turf.destination(turf.point(point), 2, rayBearing, {
+    units: 'kilometers',
+  });
+  const ray = turf.lineString([point, rayEnd.geometry.coordinates]);
+
+  for (const caster of casters) {
+    // Cheap scalar reject: too low to block the sun wherever it stands.
+    if (caster.angularHeightDegrees <= sunPosition.altitudeDegrees) continue;
+
+    try {
+      if (turf.booleanIntersects(ray, caster.feature)) return true;
+    } catch {
+      // Ignore this building rather than failing the whole trace.
+    }
+  }
+
+  return false;
+}
+
+export interface DaySample {
+  /** Minutes since local midnight. */
+  minutes: number;
+  altitudeDegrees: number;
+  inSun: boolean;
+}
+
+/**
+ * Walks a whole day at `stepMinutes` resolution, returning the sun's altitude
+ * and whether the point is lit at each step. Drives the arc scrubber.
+ */
+export function computeDayTimeline(
+  map: mapboxgl.Map,
+  point: [number, number],
+  date: Date,
+  stepMinutes: number = 10
+): DaySample[] {
+  const [longitude, latitude] = point;
+  const casters = collectShadowCasters(map, point);
+  const samples: DaySample[] = [];
+
+  for (let minutes = 0; minutes <= 1440; minutes += stepMinutes) {
+    const at = new Date(date);
+    at.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
+
+    const sun = getSunPosition(at, latitude, longitude);
+    samples.push({
+      minutes,
+      altitudeDegrees: sun.altitudeDegrees,
+      inSun:
+        sun.altitudeDegrees > 0 && !isShadowedByCasters(point, sun, casters),
+    });
+  }
+
+  return samples;
+}
+
+/**
+ * Finds when the lit/shaded state at `minutes` gives way to the opposite one.
+ * Returns null when the state holds for the rest of the day.
+ */
+export function findNextChange(
+  timeline: DaySample[],
+  minutes: number
+): { minutes: number; toSun: boolean } | null {
+  const startIndex = timeline.findIndex((s) => s.minutes >= minutes);
+  if (startIndex === -1) return null;
+
+  const current = timeline[startIndex].inSun;
+  for (let i = startIndex + 1; i < timeline.length; i++) {
+    if (timeline[i].inSun !== current) {
+      return { minutes: timeline[i].minutes, toSun: timeline[i].inSun };
+    }
+  }
+
+  return null;
+}
