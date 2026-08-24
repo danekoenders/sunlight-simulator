@@ -10,7 +10,7 @@ import {
   type DaySample,
   type SunPosition,
 } from "../lib/sunUtils";
-import { calculate3DDestinationPoint, createRay3DSegments } from "./Map/RayTracing";
+import { calculate3DDestinationPoint } from "./Map/RayTracing";
 import TopBar from "./Map/TopBar";
 import VerdictPanel from "./Map/VerdictPanel";
 import { MapProps, PlacementState, SelectedPoint } from "./Map/types";
@@ -27,7 +27,36 @@ const ZOOM_THRESHOLD = 16.5;
 const TIMELINE_STEP_MINUTES = 10;
 
 const RAY_SOURCE = "ray-source";
-const RAY_SEGMENTS_SOURCE = "ray-segments-source";
+const RAY_GROUND_SOURCE = "ray-ground-source";
+
+const SUN_RGB = "245, 158, 11";
+const SHADE_RGB = "70, 104, 154";
+
+/**
+ * How far the beam runs before it has faded out entirely, in kilometres.
+ * Kept short: under the map's pitch, elevation projects a long way up the
+ * screen, so even a modest ray draws a long line across the viewport.
+ */
+const RAY_LENGTH_KM = 0.06;
+
+/**
+ * Solid at the spot, gone by the end, so the beam reads as light heading off
+ * into the sky rather than a line that simply stops.
+ *
+ * line-width takes no line-progress, so the shaft can't taper. Two passes at
+ * different widths — a soft glow under a bright core — give it depth instead.
+ */
+const sunbeamGradient = (rgb: string, alpha: number) => [
+  "interpolate",
+  ["linear"],
+  ["line-progress"],
+  0,
+  `rgba(${rgb}, ${alpha})`,
+  0.35,
+  `rgba(${rgb}, ${alpha})`,
+  1,
+  `rgba(${rgb}, 0)`,
+];
 
 const minutesOf = (d: Date) => d.getHours() * 60 + d.getMinutes();
 
@@ -105,39 +134,77 @@ const Map: React.FC<MapProps> = ({
     );
 
     instance.on("style.load", () => {
+      // line-metrics powers both the elevation ramp and the fade, which are
+      // driven off line-progress.
       instance.addSource(RAY_SOURCE, {
         type: "geojson",
+        lineMetrics: true,
         data: { type: "FeatureCollection", features: [] },
       });
-      instance.addSource(RAY_SEGMENTS_SOURCE, {
+      instance.addSource(RAY_GROUND_SOURCE, {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
       });
 
+      // Where the beam would fall if it were lying flat. Anchors the beam to
+      // a place on the ground, which is hard to judge from a floating line.
       instance.addLayer({
-        id: "ray-layer",
-        type: "fill-extrusion",
-        source: RAY_SEGMENTS_SOURCE,
-        filter: ["==", "isRaySegment", true],
+        id: "ray-ground-layer",
+        type: "line",
+        source: RAY_GROUND_SOURCE,
+        layout: { "line-cap": "round" },
         paint: {
-          "fill-extrusion-color": "#f59e0b",
-          "fill-extrusion-height": ["get", "height"],
-          "fill-extrusion-base": ["get", "base"],
-          "fill-extrusion-opacity": 0.5,
+          "line-color": `rgb(${SUN_RGB})`,
+          "line-width": 1.5,
+          "line-dasharray": [1, 2],
+          "line-opacity": 0.35,
         },
       });
 
       instance.addLayer({
-        id: "ray-path-layer",
+        id: "ray-glow-layer",
         type: "line",
         source: RAY_SOURCE,
-        paint: {
-          "line-color": "#f59e0b",
-          "line-width": 2,
-          "line-dasharray": [2, 2],
-          "line-opacity": 0.7,
+        layout: {
+          "line-cap": "round",
+          "line-elevation-reference": "ground",
+          "line-z-offset": [
+            "at-interpolated",
+            ["*", ["line-progress"], ["-", ["length", ["get", "elevation"]], 1]],
+            ["get", "elevation"],
+          ],
         },
-      });
+        paint: {
+          "line-width": 18,
+          "line-blur": 10,
+          "line-emissive-strength": 1,
+          "line-gradient": sunbeamGradient(SUN_RGB, 0.35),
+        },
+      } as never);
+
+      // The beam itself: one straight 3D line, elevated per-vertex. A sun ray
+      // is straight, so two points interpolate exactly — no faceting.
+      instance.addLayer({
+        id: "ray-layer",
+        type: "line",
+        source: RAY_SOURCE,
+        layout: {
+          "line-cap": "round",
+          "line-join": "round",
+          "line-elevation-reference": "ground",
+          "line-z-offset": [
+            "at-interpolated",
+            ["*", ["line-progress"], ["-", ["length", ["get", "elevation"]], 1]],
+            ["get", "elevation"],
+          ],
+        },
+        paint: {
+          "line-width": 6,
+          "line-blur": 1,
+          "line-emissive-strength": 1,
+          "line-gradient": sunbeamGradient(SUN_RGB, 1),
+        },
+      } as never);
     });
 
     instance.on("load", () => {
@@ -243,52 +310,66 @@ const Map: React.FC<MapProps> = ({
       const instance = map.current;
       if (!instance?.getSource(RAY_SOURCE)) return;
 
-      const raySource = instance.getSource(RAY_SOURCE) as mapboxgl.GeoJSONSource;
-      const segmentSource = instance.getSource(
-        RAY_SEGMENTS_SOURCE
+      const beam = instance.getSource(RAY_SOURCE) as mapboxgl.GeoJSONSource;
+      const ground = instance.getSource(
+        RAY_GROUND_SOURCE
       ) as mapboxgl.GeoJSONSource;
+      const empty = { type: "FeatureCollection" as const, features: [] };
 
       if (sun.altitudeDegrees <= 0) {
-        raySource.setData({ type: "FeatureCollection", features: [] });
-        segmentSource.setData({ type: "FeatureCollection", features: [] });
+        beam.setData(empty);
+        ground.setData(empty);
         return;
       }
 
       const rayEnd = calculate3DDestinationPoint(
         point,
-        1.0,
+        RAY_LENGTH_KM,
         sun.azimuthDegrees,
         sun.altitudeDegrees
       );
 
-      const rayFeature: Feature<LineString, GeoJsonProperties> = {
+      // Two points and their heights; line-z-offset interpolates between them.
+      const beamFeature: Feature<LineString, GeoJsonProperties> = {
         type: "Feature",
-        properties: {
-          altitude: sun.altitudeDegrees,
-          azimuth: sun.azimuthDegrees,
-        },
+        properties: { elevation: [0, rayEnd.elevation] },
         geometry: {
           type: "LineString",
           coordinates: [point, rayEnd.position],
         },
       };
 
-      raySource.setData({ type: "FeatureCollection", features: [rayFeature] });
-      segmentSource.setData({
+      beam.setData({ type: "FeatureCollection", features: [beamFeature] });
+      ground.setData({
         type: "FeatureCollection",
-        features: createRay3DSegments(
-          instance,
-          point,
-          rayEnd.position,
-          0,
-          rayEnd.elevation,
-          30
-        ),
+        features: [
+          {
+            type: "Feature",
+            properties: {},
+            geometry: {
+              type: "LineString",
+              coordinates: [point, rayEnd.position],
+            },
+          } as Feature<LineString, GeoJsonProperties>,
+        ],
       });
 
-      const color = inSun ? "#f59e0b" : "#46689a";
-      instance.setPaintProperty("ray-layer", "fill-extrusion-color", color);
-      instance.setPaintProperty("ray-path-layer", "line-color", color);
+      const rgb = inSun ? SUN_RGB : SHADE_RGB;
+      instance.setPaintProperty(
+        "ray-layer",
+        "line-gradient",
+        sunbeamGradient(rgb, 1) as never
+      );
+      instance.setPaintProperty(
+        "ray-glow-layer",
+        "line-gradient",
+        sunbeamGradient(rgb, 0.35) as never
+      );
+      instance.setPaintProperty(
+        "ray-ground-layer",
+        "line-color",
+        `rgb(${rgb})`
+      );
     },
     []
   );
@@ -299,9 +380,9 @@ const Map: React.FC<MapProps> = ({
 
     const empty = { type: "FeatureCollection" as const, features: [] };
     (instance.getSource(RAY_SOURCE) as mapboxgl.GeoJSONSource).setData(empty);
-    (
-      instance.getSource(RAY_SEGMENTS_SOURCE) as mapboxgl.GeoJSONSource
-    ).setData(empty);
+    (instance.getSource(RAY_GROUND_SOURCE) as mapboxgl.GeoJSONSource).setData(
+      empty
+    );
   }, []);
 
   /* ---------------------------------------------------------------- *
