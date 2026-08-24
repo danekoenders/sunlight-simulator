@@ -11,6 +11,10 @@ import {
   type SunPosition,
 } from "../lib/sunUtils";
 import { calculate3DDestinationPoint } from "./Map/RayTracing";
+import {
+  fetchDayWeather,
+  type DayWeather,
+} from "../lib/weather";
 import TopBar from "./Map/TopBar";
 import VerdictPanel from "./Map/VerdictPanel";
 import { MapProps, PlacementState, SelectedPoint } from "./Map/types";
@@ -25,6 +29,9 @@ const ZOOM_THRESHOLD = 16.5;
 
 /** How often the day is sampled when building the timeline. */
 const TIMELINE_STEP_MINUTES = 10;
+
+/** Below this width the panel becomes a bottom sheet. Matches app.css. */
+const SHEET_BREAKPOINT = 560;
 
 const RAY_SOURCE = "ray-source";
 const RAY_GROUND_SOURCE = "ray-ground-source";
@@ -83,6 +90,9 @@ const Map: React.FC<MapProps> = ({
   const [timeline, setTimeline] = useState<DaySample[] | null>(null);
   const [isCalculating, setIsCalculating] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
+
+  const [weather, setWeather] = useState<DayWeather | null>(null);
+  const [isLocating, setIsLocating] = useState(false);
 
   const [sunTimes, setSunTimes] = useState<{
     sunrise: Date | null;
@@ -434,11 +444,12 @@ const Map: React.FC<MapProps> = ({
    * Actions
    * ---------------------------------------------------------------- */
 
-  const checkSpot = useCallback(() => {
+  const checkSpot = useCallback(
+    (at?: mapboxgl.LngLat) => {
     const instance = map.current;
     if (!instance) return;
 
-    const center = instance.getCenter();
+    const center = at ?? instance.getCenter();
     const point: [number, number] = [center.lng, center.lat];
 
     setIsCalculating(true);
@@ -483,7 +494,9 @@ const Map: React.FC<MapProps> = ({
       setIsCalculating(false);
       onSpotChange?.({ lat: center.lat, lng: center.lng });
     });
-  }, [currentTime, onSpotChange]);
+    },
+    [currentTime, onSpotChange]
+  );
 
   // Lets the mount-only `idle` handler call the latest version.
   const checkSpotRef = useRef(checkSpot);
@@ -499,9 +512,123 @@ const Map: React.FC<MapProps> = ({
     onSpotChange?.(null);
   }, [clearRay, onSpotChange]);
 
+  /* ---------------------------------------------------------------- *
+   * Weather
+   *
+   * A clear line to the sun still isn't sun if the sky is shut. Fetched per
+   * spot, not per scrub, and failure is silent: the geometric answer is the
+   * part this app owns.
+   * ---------------------------------------------------------------- */
+
+  useEffect(() => {
+    if (!selectedPoint) {
+      setWeather(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    fetchDayWeather(
+      selectedPoint.latitude,
+      selectedPoint.longitude,
+      currentTime,
+      controller.signal
+    ).then((result) => {
+      if (!controller.signal.aborted) setWeather(result);
+    });
+
+    return () => controller.abort();
+    // Only the spot and the calendar day matter; scrubbing within a day reuses
+    // the same forecast.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPoint?.latitude, selectedPoint?.longitude, currentTime.toDateString()]);
+
+  /* ---------------------------------------------------------------- *
+   * Locating
+   * ---------------------------------------------------------------- */
+
+  const locateMe = useCallback(() => {
+    const instance = map.current;
+    if (!instance || !navigator.geolocation) {
+      setMapError("This browser can't share your location.");
+      return;
+    }
+
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setIsLocating(false);
+        instance.easeTo({
+          center: [position.coords.longitude, position.coords.latitude],
+          zoom: Math.max(instance.getZoom(), 18),
+          duration: 1200,
+        });
+      },
+      () => {
+        setIsLocating(false);
+        setMapError("Couldn't get your location. Check location permissions.");
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
+    );
+  }, []);
+
   const handleSearchSelect = useCallback(() => {
     if (placementStateRef.current === "placed") resetSpot();
   }, [resetSpot]);
+
+  /* ---------------------------------------------------------------- *
+   * Tapping the map
+   *
+   * On a phone, panning a reticle onto a doorway is fiddly; tapping the spot
+   * is one action and lands where you look. The reticle stays for the times
+   * when a fingertip is too blunt — a fingertip covers roughly a doorway's
+   * width at this zoom — so both routes are available.
+   * ---------------------------------------------------------------- */
+
+  useEffect(() => {
+    const instance = map.current;
+    if (!instance || !isMapLoaded) return;
+
+    const handleClick = (e: mapboxgl.MapMouseEvent) => {
+      if (!isZoomSufficient) return;
+      checkSpotRef.current?.(e.lngLat);
+    };
+
+    instance.on("click", handleClick);
+    instance.getCanvas().style.cursor = isZoomSufficient ? "crosshair" : "";
+
+    return () => {
+      instance.off("click", handleClick);
+    };
+  }, [isMapLoaded, isZoomSufficient]);
+
+  /* ---------------------------------------------------------------- *
+   * Keeping the spot clear of the sheet
+   *
+   * On narrow screens the panel is a bottom sheet covering nearly half the
+   * map. Padding the map moves its centre into what's actually visible, so
+   * the reticle and the placed pin sit above the sheet rather than behind it.
+   * ---------------------------------------------------------------- */
+
+  useEffect(() => {
+    const instance = map.current;
+    if (!instance || !isMapLoaded) return;
+
+    const applyPadding = () => {
+      const panel = document.querySelector<HTMLElement>(".panel");
+      const isSheet = window.innerWidth <= SHEET_BREAKPOINT;
+      const bottom = isSheet && panel ? panel.offsetHeight : 0;
+
+      instance.setPadding({ top: 0, left: 0, right: 0, bottom });
+      // The reticle marks the padded centre, so it has to shift with it.
+      instance
+        .getContainer()
+        .style.setProperty("--map-pad-bottom", `${bottom}px`);
+    };
+
+    applyPadding();
+    window.addEventListener("resize", applyPadding);
+    return () => window.removeEventListener("resize", applyPadding);
+  }, [isMapLoaded, placementState, timeline, isCalculating]);
 
   /* ---------------------------------------------------------------- *
    * Render
@@ -524,6 +651,32 @@ const Map: React.FC<MapProps> = ({
         <TopBar map={map.current} onLocationSelect={handleSearchSelect} />
       )}
 
+      {isMapLoaded && (
+        <button
+          className="locate-button"
+          onClick={locateMe}
+          disabled={isLocating}
+          aria-label="Go to my location"
+        >
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden>
+            <circle cx="12" cy="12" r="3.4" fill="currentColor" />
+            <circle
+              cx="12"
+              cy="12"
+              r="7.4"
+              stroke="currentColor"
+              strokeWidth="1.8"
+            />
+            <path
+              d="M12 1.6v3M12 19.4v3M22.4 12h-3M4.6 12h-3"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+            />
+          </svg>
+        </button>
+      )}
+
       {mapError && (
         <div className="toast" role="status">
           <span>{mapError}</span>
@@ -539,9 +692,10 @@ const Map: React.FC<MapProps> = ({
           currentTime={currentTime}
           timeline={timeline}
           isCalculating={isCalculating}
+          weather={weather}
           sunrise={sunTimes.sunrise}
           sunset={sunTimes.sunset}
-          onCheck={checkSpot}
+          onCheck={() => checkSpot()}
           onReset={resetSpot}
           onTimeChange={onTimeChange}
         />

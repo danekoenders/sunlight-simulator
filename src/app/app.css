@@ -24,6 +24,7 @@
   --shade: #46689a;
   --shade-wash: rgba(70, 104, 154, 0.13);
 
+  --cloud: #7b879a;
   --night: rgba(15, 24, 38, 0.06);
 
   --shadow-panel: 0 1px 2px rgba(15, 24, 38, 0.06),
@@ -57,6 +58,7 @@
     --shade: #7ea6d6;
     --shade-wash: rgba(126, 166, 214, 0.16);
 
+    --cloud: #9aa8bd;
     --night: rgba(232, 239, 248, 0.07);
 
     --shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.4),
@@ -81,6 +83,7 @@
   --shade: #7ea6d6;
   --shade-wash: rgba(126, 166, 214, 0.16);
 
+  --cloud: #9aa8bd;
   --night: rgba(232, 239, 248, 0.07);
 
   --shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.4),
@@ -237,7 +240,8 @@ body {
 .center-reticle {
   position: absolute;
   left: 50%;
-  top: 50%;
+  /* Follows the map's padding so it stays clear of the bottom sheet. */
+  top: calc(50% - var(--map-pad-bottom, 0px) / 2);
   z-index: 5;
   transform: translate(-50%, -50%);
   pointer-events: none;
@@ -446,6 +450,10 @@ body {
   color: var(--shade);
 }
 
+.panel[data-verdict="cloudy"] .verdict-label {
+  color: var(--cloud);
+}
+
 .panel[data-verdict="night"] .verdict-label {
   color: var(--ink-mid);
 }
@@ -557,6 +565,10 @@ body {
   fill: var(--shade);
 }
 
+.panel[data-verdict="cloudy"] .sunarc-thumb {
+  fill: var(--cloud);
+}
+
 .panel[data-verdict="night"] .sunarc-thumb {
   fill: var(--ink-mid);
 }
@@ -564,6 +576,23 @@ body {
 .sunarc-stem {
   stroke: var(--hairline);
   stroke-width: 1.5;
+}
+
+/* Cloud runs in its own lane: the arc answers "does anything block this
+   spot", the strip answers "is the sky open". Reading them together is the
+   real answer, and keeping them apart keeps each one legible. */
+.cloudbar {
+  display: flex;
+  gap: 1px;
+  height: 7px;
+  margin-top: 7px;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.cloudbar span {
+  flex: 1;
+  background: var(--cloud);
 }
 
 .sunarc-scale {
@@ -579,6 +608,45 @@ body {
 .sunarc-scale b {
   font-weight: 600;
   color: var(--ink);
+}
+
+.locate-button {
+  position: absolute;
+  z-index: 10;
+  right: 16px;
+  top: 70px;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 12px;
+  border: 1px solid var(--hairline);
+  background: var(--panel);
+  backdrop-filter: blur(20px) saturate(1.6);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  box-shadow: var(--shadow-float);
+  color: var(--ink-mid);
+  cursor: pointer;
+  transition: color 0.18s var(--ease), transform 0.18s var(--ease);
+}
+
+.locate-button:hover {
+  color: var(--ink);
+}
+
+.locate-button:active {
+  transform: scale(0.94);
+}
+
+.locate-button:disabled {
+  cursor: progress;
+  color: var(--sun);
+}
+
+.locate-button svg {
+  width: 20px;
+  height: 20px;
 }
 
 /* ------------------------------------------------------------------ *

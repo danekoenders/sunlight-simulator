@@ -8,11 +8,16 @@ the answer accounts for the block across the street — not just whether the sun
 happens to be above the horizon.
 
 - **A straight answer.** "In the sun · sunny until 15:10", not a coloured dot.
+- **Cloud counts too.** A clear line to the sun is not sun if the sky is shut,
+  so a spot nothing blocks but cloud reads "Under cloud", with the clearest
+  hour of the day to aim for instead.
 - **The whole day at a glance.** The scrubber draws the sun's real altitude
   curve for that place and date, tinted by whether *your* spot is lit. You can
   read "sunny from 10:30 to 14:00" off the shape without touching anything.
 - **Shareable.** Every spot and time lives in the URL, and opening a link
   measures the spot on arrival.
+- **Built for a phone.** Tap the map to check a spot; the centre marker stays
+  for when a fingertip is too blunt.
 
 ## Getting started
 
@@ -35,6 +40,20 @@ the shadow tracing reads.
 
 ## How it works
 
+Two independent questions, kept apart on purpose. The arc answers *does
+anything block this spot* (geometry). The cloud strip beneath it answers *is
+the sky open* (weather). Reading them together is the real answer, and keeping
+them in separate lanes keeps each one legible.
+
+Geometry wins ties: a building in the way is a harder fact than cloud, so a
+shaded spot reads "In the shade" whatever the sky is doing.
+
+`src/lib/weather.ts` pulls hourly cloud cover from
+[Open-Meteo](https://open-meteo.com/), which needs no API key and allows
+browser requests. If the call fails the app carries on — the geometric answer
+is the part it owns. Hours are requested in the browser's timezone so they line
+up with the clock the rest of the app runs on.
+
 `src/lib/sunUtils.ts` holds the sun maths and the tracing:
 
 1. `collectShadowCasters` queries the rendered building layer once around the
@@ -54,6 +73,9 @@ the shadow tracing reads.
 - Trees, awnings, and terrain are not modelled — only building extrusions.
 - Transitions are resolved to the timeline's sampling step (10 minutes).
 - The point is treated as being at ground level.
+- Cloud cover is a whole-sky hourly figure, so it cannot tell you the sun
+  specifically is behind a cloud at a given minute.
+- Weather covers the current day only; there is no date picker yet.
 
 ## Built with
 

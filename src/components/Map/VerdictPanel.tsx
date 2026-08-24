@@ -1,6 +1,14 @@
 import React, { useCallback, useMemo, useState } from "react";
 import SunArc from "./SunArc";
 import { findNextChange, type DaySample } from "../../lib/sunUtils";
+import {
+  describeSky,
+  weatherAt,
+  clearestWindow,
+  OVERCAST_THRESHOLD,
+  SKY_LABEL,
+  type DayWeather,
+} from "../../lib/weather";
 import type { PlacementState, SelectedPoint } from "./types";
 
 interface VerdictPanelProps {
@@ -10,6 +18,7 @@ interface VerdictPanelProps {
   currentTime: Date;
   timeline: DaySample[] | null;
   isCalculating: boolean;
+  weather: DayWeather | null;
   sunrise: Date | null;
   sunset: Date | null;
   onCheck: () => void;
@@ -53,6 +62,19 @@ const ShadeIcon = () => (
   </svg>
 );
 
+const CloudIcon = () => (
+  <svg className="verdict-icon" viewBox="0 0 24 24" fill="none" aria-hidden>
+    <circle cx="8.5" cy="8" r="3.2" fill="currentColor" opacity="0.4" />
+    <path
+      d="M7 19.5a4.2 4.2 0 01-.5-8.37 5.8 5.8 0 0111.2 1.2A3.6 3.6 0 0117.4 19.5z"
+      fill="currentColor"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
 const NightIcon = () => (
   <svg className="verdict-icon" viewBox="0 0 24 24" fill="none" aria-hidden>
     <path
@@ -69,6 +91,7 @@ const VerdictPanel: React.FC<VerdictPanelProps> = ({
   currentTime,
   timeline,
   isCalculating,
+  weather,
   sunrise,
   sunset,
   onCheck,
@@ -121,7 +144,8 @@ const VerdictPanel: React.FC<VerdictPanelProps> = ({
             {isZoomSufficient ? (
               <>
                 <strong>Pick a spot</strong>
-                Move the map so the marker sits where you&rsquo;d stand.
+                Tap anywhere on the map, or line up the marker and use the
+                button.
               </>
             ) : (
               <>
@@ -132,7 +156,7 @@ const VerdictPanel: React.FC<VerdictPanelProps> = ({
           </p>
           {isZoomSufficient && (
             <button className="btn btn-primary" onClick={onCheck}>
-              Check this spot
+              Check the marker
             </button>
           )}
         </div>
@@ -145,7 +169,19 @@ const VerdictPanel: React.FC<VerdictPanelProps> = ({
   const sunIsUp =
     sunrise && sunset ? minutes >= minutesOf(sunrise) && minutes <= minutesOf(sunset) : true;
   const inSun = selectedPoint.isInSunlight;
-  const verdict = !sunIsUp ? "night" : inSun ? "sun" : "shade";
+
+  const now = weatherAt(weather, minutes);
+  const overcast = now !== null && now.cloudCover >= OVERCAST_THRESHOLD;
+
+  // Nothing built is in the way, but the sky is shut. Worth its own state:
+  // "in the sun" would be a promise the weather won't keep.
+  const verdict = !sunIsUp
+    ? "night"
+    : inSun
+      ? overcast
+        ? "cloudy"
+        : "sun"
+      : "shade";
 
   const change = timeline ? findNextChange(timeline, minutes) : null;
 
@@ -161,6 +197,24 @@ const VerdictPanel: React.FC<VerdictPanelProps> = ({
     ) : (
       "The sun is down."
     );
+  } else if (verdict === "cloudy") {
+    // The geometry is fine, so point at when the sky is likely to open.
+    const clearer = clearestWindow(
+      weather,
+      minutes,
+      sunset ? minutesOf(sunset) : 1435
+    );
+    detail =
+      clearer && clearer.cloudCover < OVERCAST_THRESHOLD ? (
+        <>
+          Nothing blocks this spot, but it&rsquo;s {SKY_LABEL[describeSky(now!.cloudCover)]}.
+          Clearest around <b>{formatMinutes(clearer.minutes)}</b>.
+        </>
+      ) : (
+        <>
+          Nothing blocks this spot, but it&rsquo;s {SKY_LABEL[describeSky(now!.cloudCover)]} all day.
+        </>
+      );
   } else if (change) {
     detail = change.toSun ? (
       <>
@@ -184,9 +238,11 @@ const VerdictPanel: React.FC<VerdictPanelProps> = ({
           <div className="verdict-label">
             {verdict === "sun" && <SunIcon />}
             {verdict === "shade" && <ShadeIcon />}
+            {verdict === "cloudy" && <CloudIcon />}
             {verdict === "night" && <NightIcon />}
             {verdict === "sun" && "In the sun"}
             {verdict === "shade" && "In the shade"}
+            {verdict === "cloudy" && "Under cloud"}
             {verdict === "night" && "After dark"}
           </div>
           <div className="verdict-detail">{detail}</div>
@@ -194,11 +250,18 @@ const VerdictPanel: React.FC<VerdictPanelProps> = ({
         <div className="clock">
           {formatMinutes(minutes)}
           <span className="clock-day">
-            {currentTime.toLocaleDateString([], {
-              weekday: "short",
-              day: "numeric",
-              month: "short",
-            })}
+            {now && !isNaN(now.temperature) ? (
+              <>
+                {Math.round(now.temperature)}&deg;C &middot;{" "}
+                {Math.round(now.cloudCover)}% cloud
+              </>
+            ) : (
+              currentTime.toLocaleDateString([], {
+                weekday: "short",
+                day: "numeric",
+                month: "short",
+              })
+            )}
           </span>
         </div>
       </div>
@@ -213,6 +276,25 @@ const VerdictPanel: React.FC<VerdictPanelProps> = ({
             onChange={handleArcChange}
             formatTime={formatMinutes}
           />
+          {weather && (
+            <div
+              className="cloudbar"
+              title="Cloud cover across the day"
+              aria-label="Cloud cover across the day"
+            >
+              {Array.from({ length: 48 }, (_, i) => {
+                const at = startMinutes + ((endMinutes - startMinutes) * i) / 47;
+                const cover = weatherAt(weather, at)?.cloudCover ?? 0;
+                return (
+                  <span
+                    key={i}
+                    style={{ opacity: 0.08 + (cover / 100) * 0.92 }}
+                  />
+                );
+              })}
+            </div>
+          )}
+
           <div className="sunarc-scale">
             <span>
               Sunrise <b>{sunrise ? formatMinutes(minutesOf(sunrise)) : "--:--"}</b>
