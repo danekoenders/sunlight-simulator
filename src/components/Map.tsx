@@ -396,6 +396,63 @@ const Map: React.FC<MapProps> = ({
   }, []);
 
   /* ---------------------------------------------------------------- *
+   * Facing the sun
+   *
+   * The trace can only see buildings the map has actually drawn, so which
+   * casters exist depends on where the camera looks. Under pitch the visible
+   * ground runs far up-screen and cuts off just behind, so turning to face
+   * the sun puts exactly the buildings that can shade a spot — the ones
+   * between it and the sun — in front of the camera. It also lets the beam
+   * run up the screen instead of across it.
+   *
+   * On release rather than per step: locking the bearing to every frame of a
+   * drag spins the city under you and costs you the street you were looking
+   * at.
+   * ---------------------------------------------------------------- */
+
+  const followSun = useRef(true);
+
+  useEffect(() => {
+    const instance = map.current;
+    if (!instance || !isMapLoaded) return;
+
+    // A hand on the compass wins. Steering resumes only on a fresh start.
+    const release = (e: { originalEvent?: unknown }) => {
+      if (e.originalEvent) followSun.current = false;
+    };
+
+    instance.on("rotatestart", release);
+    return () => {
+      instance.off("rotatestart", release);
+    };
+  }, [isMapLoaded]);
+
+  const faceSun = useCallback(() => {
+    const instance = map.current;
+    if (!instance || !followSun.current || !selectedPoint) return;
+
+    const sun = getSunPosition(
+      currentTime,
+      selectedPoint.latitude,
+      selectedPoint.longitude
+    );
+    if (sun.altitudeDegrees <= 0) return;
+
+    // SunCalc measures azimuth from south; +180 makes it a compass bearing,
+    // which as the map's bearing points the sun straight up the screen.
+    const bearing = (sun.azimuthDegrees + 180) % 360;
+    const delta = Math.abs(((bearing - instance.getBearing() + 540) % 360) - 180);
+    if (delta < 3) return;
+
+    instance.easeTo({
+      bearing,
+      // Turn about the spot, not the screen centre, so the pin holds still.
+      around: [selectedPoint.longitude, selectedPoint.latitude],
+      duration: 700,
+    });
+  }, [currentTime, selectedPoint]);
+
+  /* ---------------------------------------------------------------- *
    * Scrubbing
    *
    * The timeline already holds the traced answer for every step of the
@@ -503,6 +560,7 @@ const Map: React.FC<MapProps> = ({
   checkSpotRef.current = checkSpot;
 
   const resetSpot = useCallback(() => {
+    followSun.current = true;
     placedMarker.current?.remove();
     placedMarker.current = null;
     setPlacementState("idle");
@@ -698,6 +756,7 @@ const Map: React.FC<MapProps> = ({
           onCheck={() => checkSpot()}
           onReset={resetSpot}
           onTimeChange={onTimeChange}
+          onScrubEnd={faceSun}
         />
       )}
     </div>

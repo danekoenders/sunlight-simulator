@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="Solmate">
+  <title>Solmate</title>
+  <!-- A sun with a shadow's edge cut across it: the app's whole answer, lit
+       or shaded, in one disc. The rays only exist on the side still in sun. -->
+  <defs>
+    <linearGradient id="solmate-lit" x1="23" y1="7" x2="10" y2="23" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFC24D"/>
+      <stop offset="1" stop-color="#F59E0B"/>
+    </linearGradient>
+    <clipPath id="solmate-disc">
+      <circle cx="16" cy="16" r="8"/>
+    </clipPath>
+  </defs>
+
+  <!-- The rays run up and to the right, so the drawn mark sits high and right
+       of the grid it is laid out on. This centres its bounding box. -->
+  <g transform="translate(-2.95 3.54)">
+    <path
+      d="M9.92 7.32L7.86 4.37M16.69 5.42L16.93 1.83M23.16 8.18L25.59 5.53M26.48 14.39L30.03 13.84M25.18 21.30L28.30 23.10"
+      stroke="#F59E0B" stroke-width="2.6" stroke-linecap="round" fill="none"/>
+
+    <circle cx="16" cy="16" r="8" fill="url(#solmate-lit)"/>
+
+    <!-- The shadow: one straight edge, holding just under half the disc so
+         the sun stays the subject. -->
+    <g clip-path="url(#solmate-disc)">
+      <rect x="-24" y="17" width="80" height="44" fill="#46689A" transform="rotate(42 16 16)"/>
+    </g>
+  </g>
+</svg>
