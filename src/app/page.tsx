@@ -42,17 +42,41 @@ function readOpeningView(): OpeningView {
   };
 }
 
+/**
+ * How long the view has to hold still before the address bar follows it.
+ *
+ * Scrubbing the arc changes the time on every pointer event, and Safari throws
+ * a SecurityError once replaceState is called more than ~100 times in 30
+ * seconds — which a single drag across the day clears easily. Waiting for the
+ * gesture to settle turns a whole drag into one write.
+ */
+const URL_SYNC_DELAY_MS = 400;
+
 export default function AppPage() {
   // Resolved on the client only: the opening view depends on the URL and on
   // the current time, neither of which the server can know.
   const [view, setView] = useState<OpeningView | null>(null);
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const spotRef = useRef<{ lat: number; lng: number } | null>(null);
+  const lastUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     const opening = readOpeningView();
     setView(opening);
     setCurrentTime(opening.time);
+  }, []);
+
+  /** One guarded write, so a rate-limited browser can't take the page down. */
+  const writeUrl = useCallback((next: string) => {
+    if (next === lastUrlRef.current) return;
+    lastUrlRef.current = next;
+
+    try {
+      window.history.replaceState(null, '', next);
+    } catch {
+      // Throttled by the browser. The link is a convenience; the map on screen
+      // is the answer, so let it go rather than throw out of an effect.
+    }
   }, []);
 
   /** Keeps the address bar in step, so "copy link" always shares what's on screen. */
@@ -65,11 +89,12 @@ export default function AppPage() {
       t: String(currentTime.getHours() * 60 + currentTime.getMinutes()),
     });
 
-    window.history.replaceState(null, '', `?${params.toString()}`);
-  }, [currentTime]);
+    writeUrl(`?${params.toString()}`);
+  }, [currentTime, writeUrl]);
 
   useEffect(() => {
-    syncUrl();
+    const timer = setTimeout(syncUrl, URL_SYNC_DELAY_MS);
+    return () => clearTimeout(timer);
   }, [syncUrl]);
 
   const handleTimeChange = useCallback((newTime: Date) => {
@@ -82,10 +107,10 @@ export default function AppPage() {
       if (spot) {
         syncUrl();
       } else {
-        window.history.replaceState(null, '', window.location.pathname);
+        writeUrl(window.location.pathname);
       }
     },
-    [syncUrl]
+    [syncUrl, writeUrl]
   );
 
   if (!view || !currentTime) {
