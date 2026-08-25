@@ -128,11 +128,16 @@ const VerdictPanel: React.FC<VerdictPanelProps> = ({
 
   const handleArcChange = useCallback(
     (nextMinutes: number) => {
+      // A drag fires a pointer event per frame, but the arc steps in whole
+      // minutes — so most of those land on the time we are already showing.
+      // Dropping them spares the map a relight and a retrace per frame.
+      if (nextMinutes === minutes) return;
+
       const next = new Date(currentTime);
       next.setHours(Math.floor(nextMinutes / 60), nextMinutes % 60, 0, 0);
       onTimeChange(next);
     },
-    [currentTime, onTimeChange]
+    [currentTime, minutes, onTimeChange]
   );
 
   const handleShare = useCallback(async () => {
